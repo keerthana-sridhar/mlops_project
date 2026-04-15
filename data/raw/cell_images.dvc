@@ -1,0 +1,6 @@
+outs:
+- md5: 8e0db3f27f566711e0d69b60b9453e9d.dir
+  size: 701905178
+  nfiles: 55120
+  hash: md5
+  path: cell_images
