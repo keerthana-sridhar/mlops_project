@@ -149,9 +149,9 @@ def main():
     raw_dir = params["data"]["raw_dir"]
     classes = params["data"]["classes"]
 
-    report_dir = params["reports"]["base_dir"]
-    metrics_dir = params["reports"]["metrics_dir"]
-    fig_dir = params["reports"]["figures_dir"]
+    report_dir = params["eda_reports"]["base_dir"]
+    metrics_dir = params["eda_reports"]["metrics_dir"]
+    fig_dir = params["eda_reports"]["figures_dir"]
 
     os.makedirs(metrics_dir, exist_ok=True)
     os.makedirs(fig_dir, exist_ok=True)

@@ -1,0 +1,44 @@
+stages:
+  eda:
+    cmd: python src/eda.py
+    deps:
+      - src/eda.py
+      - data/raw/cell_images
+    params:
+      - data
+    metrics:
+      - reports/metrics/eda_metrics.json
+
+  preprocess:
+    cmd: python src/preprocess.py
+    deps:
+      - src/preprocess.py
+      - data/raw/cell_images
+    params:
+      - data
+      - split
+    outs:
+      - data/processed
+
+  resize:
+    cmd: python src/resize.py
+    deps:
+      - src/resize.py
+      - data/processed/split
+    params:
+      - data
+      - preprocess
+    outs:
+      - data/processed/resized
+
+
+  augment:
+    cmd: python src/augment.py
+    deps:
+      - src/augment.py
+      - data/processed/resized
+    params:
+      - data
+      - augmentation
+    outs:
+      - data/processed/augmented

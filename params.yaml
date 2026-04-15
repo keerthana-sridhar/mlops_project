@@ -1,0 +1,53 @@
+data:
+  raw_dir: data/raw/cell_images
+  processed_dir: data/processed
+  split_dir: data/processed/split
+  resized_dir: data/processed/resized
+  classes:
+  - Parasitized
+  - Uninfected
+  augmented_dir: data/processed/augmented
+
+
+eda_reports:
+  base_dir: reports
+  metrics_dir: reports/metrics
+  figures_dir: reports/figures
+split:
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  random_state: 42
+
+preprocess:
+  img_size:
+  - 224
+  - 224
+
+preprocess:
+  img_size:
+  - 224
+  - 224
+augmentation:
+  horizontal_flip: true
+  vertical_flip: true
+  rotation: 15
+  brightness: 0.2
+  contrast: 0.2
+  num_augments: 2
+
+train:
+  batch_size: 16
+  epochs: 1
+  lr: 0.0003
+  model: resnet # cnn or resnet
+
+model:
+  cnn:
+    conv_channels:
+    - 16
+    - 32
+    kernel_size: 3
+    fc_dim: 128
+  resnet:
+    pretrained: true

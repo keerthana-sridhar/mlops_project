@@ -1,0 +1,64 @@
+schema: '2.0'
+stages:
+  eda:
+    cmd: python src/eda.py
+    deps:
+    - path: data/raw/cell_images
+      hash: md5
+      md5: 66999315fe099c72be81b64a2099bdf1.dir
+      size: 350952589
+      nfiles: 27560
+    - path: src/eda.py
+      hash: md5
+      md5: a2d3824d905a32f1758d2b284667557e
+      size: 4810
+    params:
+      params.yaml:
+        data:
+          raw_dir: data/raw/cell_images
+          processed_dir: data/processed
+          split_dir: data/processed/split
+          resized_dir: data/processed/resized
+          classes:
+          - Parasitized
+          - Uninfected
+          augmented_dir: data/processed/augmented
+    outs:
+    - path: reports/metrics/eda_metrics.json
+      hash: md5
+      md5: 59da1f1770797cb9b298f20a98295f6f
+      size: 333
+  preprocess:
+    cmd: python src/preprocess.py
+    deps:
+    - path: data/raw/cell_images
+      hash: md5
+      md5: 66999315fe099c72be81b64a2099bdf1.dir
+      size: 350952589
+      nfiles: 27560
+    - path: src/preprocess.py
+      hash: md5
+      md5: 346b269884164e874cbcce1e42070398
+      size: 3754
+    params:
+      params.yaml:
+        data:
+          raw_dir: data/raw/cell_images
+          processed_dir: data/processed
+          split_dir: data/processed/split
+          resized_dir: data/processed/resized
+          classes:
+          - Parasitized
+          - Uninfected
+          augmented_dir: data/processed/augmented
+        split:
+          train_ratio: 0.7
+          val_ratio: 0.15
+          test_ratio: 0.15
+          random_state: 42
+    outs:
+    - path: data/processed
+      hash: md5
+      md5: f66b4cd0e1f51a30aa0d5e0d694a01bf.dir
+      size: 350952589
+      nfiles: 27560
