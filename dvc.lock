@@ -57,8 +57,177 @@ stages:
           test_ratio: 0.15
           random_state: 42
     outs:
-    - path: data/processed
+    - path: data/processed/split
       hash: md5
-      md5: f66b4cd0e1f51a30aa0d5e0d694a01bf.dir
+      md5: 77dd2e80c51e4dbc51bd9dad9298d37c.dir
       size: 350952589
       nfiles: 27560
+  resize:
+    cmd: python src/resize.py
+    deps:
+    - path: data/processed/split
+      hash: md5
+      md5: 77dd2e80c51e4dbc51bd9dad9298d37c.dir
+      size: 350952589
+      nfiles: 27560
+    - path: src/resize.py
+      hash: md5
+      md5: cff846e17ec5b86d12a20bb0da2e2e5d
+      size: 1617
+    params:
+      params.yaml:
+        data:
+          raw_dir: data/raw/cell_images
+          processed_dir: data/processed
+          split_dir: data/processed/split
+          resized_dir: data/processed/resized
+          classes:
+          - Parasitized
+          - Uninfected
+          augmented_dir: data/processed/augmented
+        preprocess:
+          img_size:
+          - 224
+          - 224
+    outs:
+    - path: data/processed/resized
+      hash: md5
+      md5: b2b5416b66bee66f1444bf5a03959223.dir
+      size: 775434419
+      nfiles: 27358
+  augment:
+    cmd: python src/augment.py
+    deps:
+    - path: data/processed/resized
+      hash: md5
+      md5: b2b5416b66bee66f1444bf5a03959223.dir
+      size: 775434419
+      nfiles: 27358
+    - path: src/augment.py
+      hash: md5
+      md5: 233c4f53bcb17ff480cb431227067e86
+      size: 2779
+    params:
+      params.yaml:
+        augmentation:
+          horizontal_flip: true
+          vertical_flip: true
+          rotation: 15
+          brightness: 0.2
+          contrast: 0.2
+          num_augments: 2
+        data:
+          raw_dir: data/raw/cell_images
+          processed_dir: data/processed
+          split_dir: data/processed/split
+          resized_dir: data/processed/resized
+          classes:
+          - Parasitized
+          - Uninfected
+          augmented_dir: data/processed/augmented
+    outs:
+    - path: data/processed/augmented
+      hash: md5
+      md5: b52901ce69be79f906dfd28f9c5fb70c.dir
+      size: 2107649344
+      nfiles: 65936
+  train:
+    cmd: python src/train.py
+    deps:
+    - path: data/processed/resized
+      hash: md5
+      md5: b2b5416b66bee66f1444bf5a03959223.dir
+      size: 775434419
+      nfiles: 27358
+    - path: src/models.py
+      hash: md5
+      md5: 0e16504f9d8c0d4f022787d1a1f59ad4
+      size: 1237
+    - path: src/train.py
+      hash: md5
+      md5: 4b83f6888699108c7697b819ad849e72
+      size: 5220
+    params:
+      params.yaml:
+        model:
+          cnn:
+            conv_channels:
+            - 16
+            - 32
+            kernel_size: 3
+            fc_dim: 128
+          resnet:
+            pretrained: true
+        train:
+          batch_size: 16
+          epochs: 3
+          lr: 0.0003
+          model: resnet
+    outs:
+    - path: models
+      hash: md5
+      md5: bef15019f945f7d07e306b908fa5aabd.dir
+      size: 44782219
+      nfiles: 1
+    - path: reports/metrics/train_metrics.json
+      hash: md5
+      md5: 2278d74c6465ccb5a2616173e834691e
+      size: 347
+  evaluate:
+    cmd: python src/evaluate.py
+    deps:
+    - path: data/processed/resized
+      hash: md5
+      md5: b2b5416b66bee66f1444bf5a03959223.dir
+      size: 775434419
+      nfiles: 27358
+    - path: models
+      hash: md5
+      md5: bef15019f945f7d07e306b908fa5aabd.dir
+      size: 44782219
+      nfiles: 1
+    - path: src/evaluate.py
+      hash: md5
+      md5: 950ee3559824531074a3f02590956733
+      size: 4761
+    - path: src/models.py
+      hash: md5
+      md5: 0e16504f9d8c0d4f022787d1a1f59ad4
+      size: 1237
+    params:
+      params.yaml:
+        data:
+          raw_dir: data/raw/cell_images
+          processed_dir: data/processed
+          split_dir: data/processed/split
+          resized_dir: data/processed/resized
+          classes:
+          - Parasitized
+          - Uninfected
+          augmented_dir: data/processed/augmented
+        train:
+          batch_size: 16
+          epochs: 3
+          lr: 0.0003
+          model: resnet
+    outs:
+    - path: reports/metrics/eval_metrics.json
+      hash: md5
+      md5: 38b31dae4ca58cb1cc5f69cfaae0745b
+      size: 139
+    - path: reports/plots/confusion_matrix.csv
+      hash: md5
+      md5: 9ce2dde8d95e836279eb31886c8146e0
+      size: 32
+    - path: reports/plots/eval_metrics_plots.json
+      hash: md5
+      md5: 3d01948fb1c988d5a0f2570d238c1b64
+      size: 311
+    - path: reports/plots/per_class_f1.json
+      hash: md5
+      md5: 1ad3cfd683c3282a2c6aa324d27e8e48
+      size: 150
+    - path: reports/plots/scatter_metrics.json
+      hash: md5
+      md5: 21a8ce746c6196dcd0ec8f41cfbc144c
+      size: 88

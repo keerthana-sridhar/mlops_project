@@ -13,16 +13,12 @@ eda_reports:
   base_dir: reports
   metrics_dir: reports/metrics
   figures_dir: reports/figures
+
 split:
   train_ratio: 0.7
   val_ratio: 0.15
   test_ratio: 0.15
   random_state: 42
-
-preprocess:
-  img_size:
-  - 224
-  - 224
 
 preprocess:
   img_size:
@@ -38,9 +34,10 @@ augmentation:
 
 train:
   batch_size: 16
-  epochs: 1
+  epochs: 3
   lr: 0.0003
   model: resnet # cnn or resnet
+
 
 model:
   cnn:
@@ -51,3 +48,6 @@ model:
     fc_dim: 128
   resnet:
     pretrained: true
+
+metrics:
+  average: binary
