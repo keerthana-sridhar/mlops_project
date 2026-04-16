@@ -2,3 +2,10 @@ venv/
 .DS_Store
 *.zip
 /models
+#check once
+__pycache__/
+*.pyc
+mlruns/
+mlflow.db
+data/
+.DS_Store
