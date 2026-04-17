@@ -141,7 +141,28 @@ def plot_pixel_distribution(raw_dir, classes, output_path):
     plt.close()
 
 
+def compute_pixel_stats(raw_dir, classes):
+    pixels = []
 
+    for label in classes:
+        folder = os.path.join(raw_dir, label)
+        for f in os.listdir(folder)[:200]:
+            try:
+                img = Image.open(os.path.join(folder, f)).convert("RGB")
+                arr = np.array(img) / 255.0
+                pixels.append(arr)
+            except:
+                continue
+
+    pixels = np.concatenate([p.reshape(-1, 3) for p in pixels], axis=0)
+
+    mean = pixels.mean(axis=0).tolist()
+    std = pixels.std(axis=0).tolist()
+
+    return {
+        "mean": mean,
+        "std": std
+    }
 
 def main():
     params = load_params()
@@ -164,14 +185,16 @@ def main():
 
     size_stats = image_size_stats(raw_dir, classes)
     corrupt = check_corrupt(raw_dir, classes)
+    pixel_stats = compute_pixel_stats(raw_dir, classes)
 
     results = {
-        "counts": counts,
-        "class_distribution": class_distribution,
-        "image_size": size_stats,
-        "corrupt_images": corrupt
-    }
-
+    "counts": counts,
+    "class_distribution": class_distribution,
+    "image_size": size_stats,
+    "corrupt_images": corrupt,
+    "pixel_stats": pixel_stats
+}
+    
 
     with open(os.path.join(metrics_dir, "eda_metrics.json"), "w") as f:
         json.dump(results, f, indent=4)

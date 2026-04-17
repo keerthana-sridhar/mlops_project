@@ -10,8 +10,8 @@ stages:
       nfiles: 27560
     - path: src/eda.py
       hash: md5
-      md5: a2d3824d905a32f1758d2b284667557e
-      size: 4810
+      md5: 5f91b03e8f0feb6d333534b2588b97bf
+      size: 5483
     params:
       params.yaml:
         data:
@@ -26,8 +26,8 @@ stages:
     outs:
     - path: reports/metrics/eda_metrics.json
       hash: md5
-      md5: 59da1f1770797cb9b298f20a98295f6f
-      size: 333
+      md5: 35de0efc35264106792e011d84e7d9c0
+      size: 608
   preprocess:
     cmd: python src/preprocess.py
     deps:

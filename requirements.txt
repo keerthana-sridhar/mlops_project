@@ -2,3 +2,4 @@ python-multipart
 
 pytest 
 httpx
+prometheus-client

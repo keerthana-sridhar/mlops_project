@@ -1,0 +1,14 @@
+strict digraph {
+"eda";
+"preprocess";
+"resize";
+"augment";
+"train";
+"evaluate";
+"preprocess" -> "resize";
+"resize" -> "augment";
+"resize" -> "train";
+"resize" -> "evaluate";
+"train" -> "evaluate";
+}
+
