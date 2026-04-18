@@ -1,0 +1,14 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: "webhook"
+  group_wait: 0s          # ⬅️ send immediately
+  group_interval: 5s      # ⬅️ resend updates quickly
+  repeat_interval: 10s    # ⬅️ keep sending periodically
+
+receivers:
+  - name: "webhook"
+    webhook_configs:
+      - url: "http://127.0.0.1:8000/internal/alert"
+        send_resolved: true

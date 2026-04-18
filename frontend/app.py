@@ -34,7 +34,7 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("📊 Live Metrics")
 
 try:
-    res = requests.get(f"{BACKEND_URL}/metrics")
+    res = requests.get(f"{BACKEND_URL}/api/metrics")
     metrics = res.json()
 
     st.sidebar.metric(
@@ -151,6 +151,32 @@ elif page == "Home":
     except:
         st.error("Backend is not running ❌")
         st.stop()
+        # -------- SYSTEM ALERTS (FROM ALERTMANAGER) -------- #
+    st.subheader("🚨 System Alerts")
+
+    try:
+        alert_res = requests.get(f"{BACKEND_URL}/alerts")
+        alert_data = alert_res.json()
+        alerts = alert_data.get("alerts", [])
+
+        if not alerts:
+            st.success("✅ No active system alerts")
+        else:
+            for alert in alerts:
+                name = alert["labels"].get("alertname", "Unknown")
+                severity = alert["labels"].get("severity", "warning")
+
+                summary = alert.get("annotations", {}).get("summary", "")
+                description = alert.get("annotations", {}).get("description", "")
+
+                if severity == "critical":
+                    st.error(f"🚨 {summary}\n{description}")
+                else:
+                    st.warning(f"⚠️ {summary}\n{description}")
+
+    except Exception:
+        st.warning("Could not fetch system alerts")
+    
 
     uploaded_files = st.file_uploader(
         "Upload Images or ZIP",
@@ -280,11 +306,9 @@ elif page == "Home":
                                 status = "success"
                                 alert = "✅ Prediction OK"
                             label = res.get("prediction_label")
-                            confidence = (
-                            round(res.get("confidence", 0), 3)
-                            if label not in ["ood", "uncertain"]
-                            else None
-                        )
+                            confidence = res.get("confidence")
+                            if confidence is not None:
+                                confidence = round(confidence, 3)
 
                             results.append({
     "filename": filename,
@@ -324,7 +348,7 @@ elif page == "Home":
             st.subheader("📊 Live Model Monitoring")
 
             try:
-                res = requests.get(f"{BACKEND_URL}/metrics")
+                res = requests.get(f"{BACKEND_URL}/api/metrics")
                 metrics = res.json()
 
                 col1, col2, col3 = st.columns(3)
