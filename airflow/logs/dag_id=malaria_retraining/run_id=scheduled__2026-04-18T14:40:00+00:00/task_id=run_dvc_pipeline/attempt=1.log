@@ -1,0 +1,9 @@
+{"timestamp":"2026-04-18T14:42:04.300252Z","level":"info","event":"DAG bundles loaded: dags-folder, example_dags","logger":"airflow.dag_processing.bundles.manager.DagBundlesManager","filename":"manager.py","lineno":209}
+{"timestamp":"2026-04-18T14:42:04.351524Z","level":"info","event":"Filling up the DagBag from /opt/airflow/dags/retrain_dag.py","logger":"airflow.dag_processing.dagbag.BundleDagBag","filename":"dagbag.py","lineno":469}
+{"timestamp":"2026-04-18T14:42:05.701712Z","level":"info","event":"Task instance is in running state","logger":"task.stdout"}
+{"timestamp":"2026-04-18T14:42:05.708024Z","level":"info","event":" Previous state of the Task instance: TaskInstanceState.QUEUED","logger":"task.stdout"}
+{"timestamp":"2026-04-18T14:42:05.709720Z","level":"info","event":"Current task name:run_dvc_pipeline","logger":"task.stdout"}
+{"timestamp":"2026-04-18T14:42:05.710528Z","level":"info","event":"Dag name:malaria_retraining","logger":"task.stdout"}
+{"timestamp":"2026-04-18T14:42:05.732721Z","level":"info","event":"Tmp dir root location: /tmp","logger":"airflow.task.hooks.airflow.providers.standard.hooks.subprocess.SubprocessHook","filename":"subprocess.py","lineno":78}
+{"timestamp":"2026-04-18T14:42:05.774013Z","level":"info","event":"Running command: ['/usr/bin/bash', '-c', 'cd /opt/project && dvc repro']","logger":"airflow.task.hooks.airflow.providers.standard.hooks.subprocess.SubprocessHook","filename":"subprocess.py","lineno":80}
+{"timestamp":"2026-04-18T14:42:05.790895Z","level":"info","event":"Output:","logger":"airflow.task.hooks.airflow.providers.standard.hooks.subprocess.SubprocessHook","filename":"subprocess.py","lineno":92}

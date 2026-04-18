@@ -9,3 +9,20 @@ mlruns/
 mlflow.db
 data/
 .DS_Store
+# Runtime files
+failure.json
+inference_metrics.json
+
+# Data folders (tracked by DVC instead)
+data/feedback/unlabeled/
+data/feedback/unlabeled_ood/
+data/feedback/labelled/
+
+# Those random DVC cache folders
+data/01K*/
+data/chunks_head/
+
+# Python
+__pycache__/
+*.pyc
+.env

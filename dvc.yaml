@@ -1,4 +1,16 @@
 stages:
+
+
+  merge_feedback:
+    cmd: python src/merge_feedback.py
+    deps:
+      - src/merge_feedback.py
+      - data/feedback/labelled
+    outs:
+    - data/raw/cell_images:
+        persist: true
+
+
   eda:
     cmd: python src/eda.py
     deps:

@@ -231,3 +231,21 @@ stages:
       hash: md5
       md5: 21a8ce746c6196dcd0ec8f41cfbc144c
       size: 88
+  merge_feedback:
+    cmd: python src/merge_feedback.py
+    deps:
+    - path: data/feedback/labelled
+      hash: md5
+      md5: 268f410d0da7ecaacf0d566121da21b0.dir
+      size: 239250
+      nfiles: 20
+    - path: src/merge_feedback.py
+      hash: md5
+      md5: b86663aa713f8086270c4697b1ebbed6
+      size: 883
+    outs:
+    - path: data/raw/cell_images
+      hash: md5
+      md5: 66999315fe099c72be81b64a2099bdf1.dir
+      size: 350952589
+      nfiles: 27560
