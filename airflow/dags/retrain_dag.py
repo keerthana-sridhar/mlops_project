@@ -1,11 +1,20 @@
 from airflow import DAG
 from airflow.providers.standard.operators.bash import BashOperator
+from airflow.providers.standard.operators.python import ShortCircuitOperator
 from datetime import datetime, timedelta
+import os
 
 PROJECT_PATH = "/opt/project"
+FEEDBACK_PATH = f"{PROJECT_PATH}/data/feedback/labelled"
+
+def check_new_data():
+    if not os.path.exists(FEEDBACK_PATH):
+        return False
+    return len(os.listdir(FEEDBACK_PATH)) > 0
+
 
 with DAG(
-    dag_id="malaria_retraining",
+    dag_id="malaria_retraining_v2",
     start_date=datetime(2026, 1, 1),
     schedule="@daily",
     catchup=False,
@@ -13,8 +22,42 @@ with DAG(
     dagrun_timeout=timedelta(hours=2),
 ) as dag:
 
-    run_dvc = BashOperator(
-        task_id="run_dvc_pipeline",
-        bash_command=f"cd {PROJECT_PATH} && dvc repro",
-        execution_timeout=None,    # no task-level timeout
+    check = ShortCircuitOperator(
+        task_id="check_new_images",
+        python_callable=check_new_data,
     )
+
+    process = BashOperator(
+        task_id="process_feedback",
+        bash_command=f"cd {PROJECT_PATH} && PYTHONUNBUFFERED=1 python src/process_feedback.py",
+    )
+
+    finetune = BashOperator(
+        task_id="finetune_model",
+        bash_command=f"cd {PROJECT_PATH} && PYTHONUNBUFFERED=1 python src/finetune.py",
+    )
+
+    evaluate = BashOperator(
+        task_id="evaluate_finetune",
+        bash_command=f"cd {PROJECT_PATH} && PYTHONUNBUFFERED=1 python src/eval_finetune.py",
+    )
+
+    promote = BashOperator(
+        task_id="promote_model",
+        bash_command=f"cd {PROJECT_PATH} && PYTHONUNBUFFERED=1 python src/promote_model.py",
+    )
+
+    snapshot = BashOperator(
+    task_id="dvc_snapshot",
+    bash_command="""
+        cd /opt/project &&
+        dvc config core.autostage true &&
+        dvc add finetune/checkpoint.pth &&
+        dvc add data/processed/incremental_archive &&
+        dvc push || echo "DVC push skipped"
+    """,
+)
+
+ 
+
+    check >> process >> finetune >> evaluate >> promote >>  snapshot

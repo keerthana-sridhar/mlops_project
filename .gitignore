@@ -27,3 +27,13 @@ __pycache__/
 *.pyc
 .env
 airflow/logs
+
+# add to .gitignore
+mlflow_docker.db
+mlflow.db
+mlruns/
+reports_finetune/
+finetune/run_id.txt
+finetune/production_model.pth
+finetune/.gitignore
+src/dvc_snapshot.sh  

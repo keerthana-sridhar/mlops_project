@@ -14,7 +14,13 @@ import mlflow
 import os
 
 # Option 1: Use MLflow server (recommended)
-mlflow.set_tracking_uri("sqlite:///mlflow.db")
+#mlflow.set_tracking_uri("sqlite:///mlflow.db")
+mlflow.set_tracking_uri(
+    os.environ.get(
+        "MLFLOW_TRACKING_URI", 
+        "sqlite:///mlflow.db"   # relative = local project dir, works on terminal
+    )
+)
 mlflow.set_experiment("Malaria")
 
 def load_params():

@@ -66,9 +66,10 @@ x-airflow-common:
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
     AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET:-airflow_jwt_secret}
     AIRFLOW__API_AUTH__JWT_ISSUER: ${AIRFLOW__API_AUTH__JWT_ISSUER:-airflow}
-
+    MLFLOW_TRACKING_URI: "sqlite:////opt/project/mlflow_docker.db" 
     AIRFLOW__CORE__TASK_RUNNER_TERMINATION_TIMEOUT: 7200
     AIRFLOW__CELERY__OPERATION_TIMEOUT: 7200
+
     # yamllint disable rule:line-length
     # Use simple http server on scheduler for health checks
     # See https://airflow.apache.org/docs/apache-airflow/stable/administration-and-deployment/logging-monitoring/check-health.html#scheduler-health-check-server
