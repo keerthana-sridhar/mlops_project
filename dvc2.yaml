@@ -44,6 +44,16 @@ stages:
       - data/processed/resized
 
 
+  augment:
+    cmd: python src/augment.py
+    deps:
+      - src/augment.py
+      - data/processed/resized
+    params:
+      - data
+      - augmentation
+    outs:
+      - data/processed/augmented
       
   train:
     cmd: python src/train.py

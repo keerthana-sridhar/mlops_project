@@ -26,3 +26,4 @@ data/chunks_head/
 __pycache__/
 *.pyc
 .env
+airflow/logs

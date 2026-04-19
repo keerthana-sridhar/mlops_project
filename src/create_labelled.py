@@ -7,7 +7,7 @@ SRC_BASE = "data/processed/split/demo"
 DEST_BASE = "data/feedback/labelled"
 
 CLASSES = ["Parasitized", "Uninfected"]
-NUM_SAMPLES = 10
+NUM_SAMPLES = 1
 
 for cls in CLASSES:
     src_dir = os.path.join(SRC_BASE, cls)

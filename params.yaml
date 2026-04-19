@@ -34,9 +34,9 @@ augmentation:
 
 train:
   batch_size: 16
-  epochs: 2
-  lr: 0.0003
-  model: resnet # cnn or resnet
+  epochs: 1
+  lr: 0.0005
+  model: cnn # cnn or resnet
 
 
 model:
