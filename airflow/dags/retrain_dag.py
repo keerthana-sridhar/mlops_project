@@ -51,9 +51,8 @@ with DAG(
     task_id="dvc_snapshot",
     bash_command="""
         cd /opt/project &&
-        dvc config core.autostage true &&
         dvc add finetune/checkpoint.pth &&
-        dvc add data/processed/incremental_archive &&
+        dvc add data/processed/incremental_resized &&
         dvc push || echo "DVC push skipped"
     """,
 )

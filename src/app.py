@@ -3,6 +3,7 @@ import io
 import yaml
 import logging 
 import os
+import psutil   
 import json
 import time
 from fastapi import Request
@@ -10,6 +11,20 @@ import subprocess
 from prometheus_client import Counter, Gauge, Histogram, make_asgi_app
 import time
 from PIL import Image, UnidentifiedImageError
+import sys
+import os
+
+sys.path.append("/opt/project/src")
+
+
+# 1. Add src to path
+sys.path.insert(0, "/opt/project/src")
+
+# 2. Import your module
+import models
+
+# 3. Force mapping (THIS is key)
+sys.modules["models"] = models
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from torchvision import datasets, transforms
@@ -122,6 +137,19 @@ ood_total = Counter(
 ood_rate_gauge = Gauge(
     "ood_rate",
     "Rolling OOD rate"
+)
+confidence_sum = Counter(
+    "prediction_confidence_sum",
+    "Sum of prediction confidences"
+)
+
+confidence_count = Counter(
+    "prediction_confidence_count",
+    "Number of predictions"
+)
+cpu_usage = Gauge(
+    "cpu_usage_percent",
+    "CPU usage percentage"
 )
 
 '''
@@ -273,12 +301,16 @@ class_names = train_dataset.classes
 
 # ---------------- LOAD MODEL FROM MLFLOW ---------------- #
 
-mlflow.set_tracking_uri("sqlite:///mlflow.db")
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")
+MODEL_URI = os.environ.get("MODEL_URI", "models:/MalariaClassifier/Production")
+
+mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
 logger.info("Loading model from MLflow Production...")
+logger.info(f"Using MLflow tracking URI: {MLFLOW_TRACKING_URI}")
 
 model = mlflow.pytorch.load_model(
-    "models:/MalariaClassifier/Production"
+    MODEL_URI
 )
 
 model.eval()
@@ -459,6 +491,8 @@ async def predict(file: UploadFile = File(...)):
             probs = torch.softmax(outputs, dim=1)
             pred = probs.argmax(dim=1).item()
             confidence = probs.max().item()
+            confidence_sum.inc(confidence)
+            confidence_count.inc()
             entropy = -torch.sum(probs * torch.log(probs + 1e-10)).item()
 
         latency = time.time() - start_time
@@ -486,6 +520,7 @@ async def predict(file: UploadFile = File(...)):
 
         # -------- MODEL METRICS -------- #
         predictions_total.labels(label=label).inc()
+        cpu_usage.set(psutil.cpu_percent())
 
         prediction_confidence.set(confidence)
         prediction_entropy.set(entropy)
@@ -749,5 +784,4 @@ async def receive_alert(request: Request):
 @app.get("/alerts")
 def get_alerts():
     return {"alerts": ACTIVE_ALERTS}
-
 

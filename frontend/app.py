@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import mimetypes
 
 # ── CONFIG ─────────────────────────────
-BACKEND_URL = "http://localhost:8000"
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
 
 st.set_page_config(
     page_title="Malaria Diagnostic System",

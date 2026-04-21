@@ -118,5 +118,37 @@
     "type": "ood",
     "reason": "distribution_mismatch",
     "timestamp": 1776513076.728283
+  },
+  {
+    "filename": "images4.png",
+    "type": "ood",
+    "reason": "distribution_mismatch",
+    "timestamp": 1776659950.273688
+  },
+  {
+    "filename": "images.jpeg",
+    "type": "ood",
+    "reason": "distribution_mismatch",
+    "timestamp": 1776686541.537895
+  },
+  {
+    "filename": "images9.png",
+    "type": "ood",
+    "reason": "distribution_mismatch",
+    "timestamp": 1776738754.383427
+  },
+  {
+    "filename": "C70P31_ThinF_IMG_20150813_132732_cell_4.png",
+    "type": "uncertain",
+    "confidence": 0.5894518494606018,
+    "entropy": 0.6770574450492859,
+    "timestamp": 1776738768.8199122
+  },
+  {
+    "filename": "Test_Project/C70P31_ThinF_IMG_20150813_132732_cell_4.png",
+    "type": "uncertain",
+    "confidence": 0.5894518494606018,
+    "entropy": 0.6770574450492859,
+    "timestamp": 1776738787.2491875
   }
 ]

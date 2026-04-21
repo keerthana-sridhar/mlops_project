@@ -1,0 +1,10 @@
+dvc
+fastapi
+mlflow
+numpy<2
+pillow
+prometheus-client
+psutil
+python-multipart
+pyyaml
+uvicorn

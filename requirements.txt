@@ -3,3 +3,11 @@ python-multipart
 pytest 
 httpx
 prometheus-client
+uvicorn
+fastapi
+mlflow
+#torch 
+numpy==1.26.4    
+psutil
+numpy<2
+torchvision
