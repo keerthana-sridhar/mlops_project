@@ -6,6 +6,7 @@ import os
 
 PROJECT_PATH = "/opt/project"
 FEEDBACK_PATH = f"{PROJECT_PATH}/data/feedback/labelled"
+PYTHON_CMD = "PYTHONUNBUFFERED=1 python"
 
 def check_new_data():
     if not os.path.exists(FEEDBACK_PATH):
@@ -16,7 +17,7 @@ def check_new_data():
 with DAG(
     dag_id="malaria_retraining_v2",
     start_date=datetime(2026, 1, 1),
-    schedule="@daily",
+    schedule="*/5 * * * *",
     catchup=False,
     max_active_runs=1,
     dagrun_timeout=timedelta(hours=2),
@@ -29,33 +30,34 @@ with DAG(
 
     process = BashOperator(
         task_id="process_feedback",
-        bash_command=f"cd {PROJECT_PATH} && PYTHONUNBUFFERED=1 python src/process_feedback.py",
+        bash_command=f"cd {PROJECT_PATH} && {PYTHON_CMD} src/process_feedback.py",
     )
 
     finetune = BashOperator(
         task_id="finetune_model",
-        bash_command=f"cd {PROJECT_PATH} && PYTHONUNBUFFERED=1 python src/finetune.py",
+        bash_command=f"cd {PROJECT_PATH} && {PYTHON_CMD} src/finetune.py",
     )
 
     evaluate = BashOperator(
         task_id="evaluate_finetune",
-        bash_command=f"cd {PROJECT_PATH} && PYTHONUNBUFFERED=1 python src/eval_finetune.py",
+        bash_command=f"cd {PROJECT_PATH} && {PYTHON_CMD} src/eval_finetune.py",
     )
 
     promote = BashOperator(
         task_id="promote_model",
-        bash_command=f"cd {PROJECT_PATH} && PYTHONUNBUFFERED=1 python src/promote_model.py",
+        bash_command=f"cd {PROJECT_PATH} && {PYTHON_CMD} src/promote_model.py",
     )
 
     snapshot = BashOperator(
-    task_id="dvc_snapshot",
-    bash_command="""
-        cd /opt/project &&
-        dvc add finetune/checkpoint.pth &&
-        dvc add data/processed/incremental_resized &&
-        dvc push || echo "DVC push skipped"
-    """,
-)
+        task_id="dvc_snapshot",
+        bash_command="""
+            cd /opt/project &&
+            test -f finetune/checkpoint.pth &&
+            dvc add finetune/checkpoint.pth &&
+            dvc add data/processed/incremental_resized &&
+            (dvc push || echo "DVC push skipped")
+        """,
+    )
 
  
 

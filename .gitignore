@@ -37,3 +37,7 @@ finetune/run_id.txt
 finetune/production_model.pth
 finetune/.gitignore
 src/dvc_snapshot.sh  
+
+logs/
+
+docs/

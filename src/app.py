@@ -6,6 +6,10 @@ import os
 import psutil   
 import json
 import time
+import base64
+import threading
+import re
+import zipfile
 from fastapi import Request
 import subprocess
 from prometheus_client import Counter, Gauge, Histogram, make_asgi_app
@@ -13,6 +17,11 @@ import time
 from PIL import Image, UnidentifiedImageError
 import sys
 import os
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib import error as urlerror
+from urllib import request as urlrequest
+from collections import deque
 
 sys.path.append("/opt/project/src")
 
@@ -172,13 +181,21 @@ OOD_RATE_THRESHOLD = 0.1
 _runtime_counts = {
     "total": 0,
     "low_conf": 0,
-    "ood_count": 0,
-    "conf_sum": 0.0
+    "ood_count": 0
+}
+_global_counts = {
+    "invalid": 0,
+    "ood": 0
+}
+_confidence_stats = {
+    "sum": 0.0,
+    "count": 0
 }
 
 def update_runtime_counts(confidence, is_ood=False):
     _runtime_counts["total"] += 1
-    _runtime_counts["conf_sum"] += confidence
+    _confidence_stats["sum"] += confidence
+    _confidence_stats["count"] += 1
 
     if confidence < CONF_THRESHOLD:
         _runtime_counts["low_conf"] += 1
@@ -189,13 +206,14 @@ def update_runtime_counts(confidence, is_ood=False):
 
 def compute_rates():
     total = _runtime_counts["total"]
+    conf_count = _confidence_stats["count"]
 
     if total == 0:
         return 0.0, 0.0, 0.0
 
     low_conf_rate = _runtime_counts["low_conf"] / total
     ood_rate = _runtime_counts["ood_count"] / total
-    avg_conf = _runtime_counts["conf_sum"] / total
+    avg_conf = (_confidence_stats["sum"] / conf_count) if conf_count else 0.0
 
     return low_conf_rate, ood_rate, avg_conf
 '''
@@ -220,6 +238,10 @@ def update_metrics(confidence):
 
 # ---------------- FEEDBACK STORAGE ---------------- #
 FAILURE_FILE = "failure.json"
+FEEDBACK_ROOT = Path("data/feedback")
+LABELLED_DIR = FEEDBACK_ROOT / "labelled"
+for class_name in ["Parasitized", "Uninfected"]:
+    (LABELLED_DIR / class_name).mkdir(parents=True, exist_ok=True)
 
 if not os.path.exists(FAILURE_FILE):
     with open(FAILURE_FILE, "w") as f:
@@ -245,10 +267,279 @@ def log_failure(entry):
     except Exception as e:
         logger.error(f"Failure logging failed: {e}")
 
-UNLABELED_DIR = "data/feedback/unlabeled"
+UNLABELED_DIR = str(FEEDBACK_ROOT / "unlabeled")
 os.makedirs(UNLABELED_DIR, exist_ok=True)
-UNLABELED_OOD_DIR = "data/feedback/unlabeled_ood"
+UNLABELED_OOD_DIR = str(FEEDBACK_ROOT / "unlabeled_ood")
 os.makedirs(UNLABELED_OOD_DIR, exist_ok=True)
+
+AIRFLOW_DAG_ID = os.environ.get("AIRFLOW_DAG_ID", "malaria_retraining_v2")
+AIRFLOW_API_USERNAME = os.environ.get("AIRFLOW_API_USERNAME", "airflow")
+AIRFLOW_API_PASSWORD = os.environ.get("AIRFLOW_API_PASSWORD", "airflow")
+_AIRFLOW_API_HINT = os.environ.get("AIRFLOW_API_BASE", "").rstrip("/")
+
+
+def airflow_api_bases():
+    running_in_docker = Path("/.dockerenv").exists()
+    candidates = [_AIRFLOW_API_HINT]
+
+    if running_in_docker:
+        candidates.extend([
+            "http://airflow-apiserver:8080/api/v2",
+            "http://localhost:8080/api/v2",
+        ])
+    else:
+        candidates.extend([
+            "http://localhost:8080/api/v2",
+            "http://airflow-apiserver:8080/api/v2",
+        ])
+
+    return [base for i, base in enumerate(candidates) if base and base not in candidates[:i]]
+
+
+def airflow_request(method, path, payload=None, timeout=10):
+    auth = base64.b64encode(
+        f"{AIRFLOW_API_USERNAME}:{AIRFLOW_API_PASSWORD}".encode("utf-8")
+    ).decode("utf-8")
+    errors = []
+
+    for base in airflow_api_bases():
+        url = f"{base}{path}"
+        data = None if payload is None else json.dumps(payload).encode("utf-8")
+        req = urlrequest.Request(url, data=data, method=method.upper())
+        req.add_header("Authorization", f"Basic {auth}")
+        req.add_header("Accept", "application/json")
+        if data is not None:
+            req.add_header("Content-Type", "application/json")
+
+        try:
+            with urlrequest.urlopen(req, timeout=timeout) as response:
+                raw = response.read()
+                body = json.loads(raw.decode("utf-8")) if raw else {}
+                return body, base
+        except urlerror.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="ignore")
+            errors.append(f"{exc.code} from {url}: {body or exc.reason}")
+        except Exception as exc:
+            errors.append(f"{type(exc).__name__} from {url}: {exc}")
+
+    raise RuntimeError("Airflow API unavailable. Tried: " + " | ".join(errors))
+
+
+def extract_collection(payload, *keys):
+    for key in keys:
+        if isinstance(payload, dict) and isinstance(payload.get(key), list):
+            return payload[key]
+    return []
+
+
+def summarize_dag_run(run):
+    if not isinstance(run, dict):
+        return {}
+
+    return {
+        "dag_run_id": run.get("dag_run_id") or run.get("dagRunId") or run.get("run_id"),
+        "state": run.get("state"),
+        "run_type": run.get("run_type") or run.get("runType"),
+        "logical_date": run.get("logical_date") or run.get("logicalDate"),
+        "start_date": run.get("start_date") or run.get("startDate"),
+        "end_date": run.get("end_date") or run.get("endDate"),
+        "note": run.get("note"),
+    }
+
+
+def fetch_retraining_status(limit=5):
+    payload, base = airflow_request(
+        "GET",
+        f"/dags/{AIRFLOW_DAG_ID}/dagRuns?limit={limit}&order_by=-start_date",
+    )
+
+    runs = [summarize_dag_run(run) for run in extract_collection(payload, "dag_runs", "dagRuns")]
+    latest = runs[0] if runs else None
+    tasks = []
+
+    if latest and latest.get("dag_run_id"):
+        try:
+            task_payload, _ = airflow_request(
+                "GET",
+                f"/dags/{AIRFLOW_DAG_ID}/dagRuns/{latest['dag_run_id']}/taskInstances",
+            )
+            raw_tasks = extract_collection(task_payload, "task_instances", "taskInstances")
+            tasks = [
+                {
+                    "task_id": task.get("task_id") or task.get("taskId"),
+                    "state": task.get("state"),
+                    "start_date": task.get("start_date") or task.get("startDate"),
+                    "end_date": task.get("end_date") or task.get("endDate"),
+                }
+                for task in raw_tasks
+            ]
+        except Exception as exc:
+            logger.warning(f"Could not fetch Airflow task instances: {exc}")
+
+    return {
+        "dag_id": AIRFLOW_DAG_ID,
+        "api_available": True,
+        "api_base": base,
+        "latest_run": latest,
+        "recent_runs": runs,
+        "task_instances": tasks,
+    }
+
+
+def summarize_dvc_status_output(output):
+    text = str(output or "").strip()
+    if not text:
+        text = "Pipeline is up to date."
+
+    if "up to date" in text.lower():
+        return {
+            "status": "up_to_date",
+            "summary": "Pipeline is up to date",
+            "clean": True,
+            "entries": [],
+            "raw_output": text,
+        }
+
+    entries = []
+    current_target = None
+
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        if not line.startswith((" ", "\t")) and stripped.endswith(":"):
+            current_target = stripped[:-1]
+            continue
+
+        if current_target and ":" in stripped:
+            category, value = stripped.split(":", 1)
+            entries.append(
+                {
+                    "target": current_target,
+                    "category": category.strip(),
+                    "value": value.strip(),
+                }
+            )
+            continue
+
+        entries.append(
+            {
+                "target": current_target or "pipeline",
+                "category": "detail",
+                "value": stripped,
+            }
+        )
+
+    return {
+        "status": "needs_update",
+        "summary": f"{len(entries)} pending DVC change(s)",
+        "clean": False,
+        "entries": entries,
+        "raw_output": text,
+    }
+
+
+def count_feedback_files(path):
+    path = Path(path)
+    if not path.exists():
+        return 0
+    return sum(1 for item in path.rglob("*") if item.is_file())
+
+
+def normalize_label_folder(name):
+    normalized = str(name).strip().lower()
+    if normalized == "parasitized":
+        return "Parasitized"
+    if normalized == "uninfected":
+        return "Uninfected"
+    return None
+
+
+def make_unique_destination(base_dir, filename):
+    base_dir = Path(base_dir)
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    candidate = base_dir / Path(filename).name
+    if not candidate.exists():
+        return candidate
+
+    stem = candidate.stem
+    suffix = candidate.suffix
+    counter = 1
+    while True:
+        alternate = base_dir / f"{stem}_{counter}{suffix}"
+        if not alternate.exists():
+            return alternate
+        counter += 1
+
+
+def extract_labelled_zip_to_feedback(zip_bytes):
+    extracted_counts = {"Parasitized": 0, "Uninfected": 0}
+    discovered_labels = set()
+    image_suffixes = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
+
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
+        members = [member for member in archive.infolist() if not member.is_dir()]
+
+        for member in members:
+            parts = [
+                part for part in Path(member.filename).parts
+                if part and part != "__MACOSX" and not part.startswith("._")
+            ]
+            if not parts:
+                continue
+
+            label_name = next((normalize_label_folder(part) for part in parts if normalize_label_folder(part)), None)
+            if label_name:
+                discovered_labels.add(label_name)
+
+        missing = sorted({"Parasitized", "Uninfected"} - discovered_labels)
+        if missing:
+            raise ValueError(
+                "The labelled ZIP must contain both 'parasitized' and 'uninfected' subfolders."
+            )
+
+        for member in members:
+            parts = [
+                part for part in Path(member.filename).parts
+                if part and part != "__MACOSX" and not part.startswith("._")
+            ]
+            if not parts:
+                continue
+
+            label_name = next((normalize_label_folder(part) for part in parts if normalize_label_folder(part)), None)
+            if not label_name:
+                continue
+
+            filename = Path(parts[-1]).name
+            if not filename:
+                continue
+
+            if Path(filename).suffix.lower() not in image_suffixes:
+                continue
+
+            with archive.open(member) as source:
+                data = source.read()
+                if not data:
+                    continue
+
+            destination = make_unique_destination(LABELLED_DIR / label_name, filename)
+            with open(destination, "wb") as target:
+                target.write(data)
+
+            extracted_counts[label_name] += 1
+
+    total = sum(extracted_counts.values())
+    if total == 0:
+        raise ValueError("No labelled image files were found inside the ZIP archive.")
+
+    return {
+        "total_extracted": total,
+        "extracted_by_class": extracted_counts,
+        "labelled_root": str(LABELLED_DIR),
+    }
 
 
 # ---------------- LOAD CONFIG ---------------- #
@@ -303,48 +594,257 @@ class_names = train_dataset.classes
 
 MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")
 MODEL_URI = os.environ.get("MODEL_URI", "models:/MalariaClassifier/Production")
+MODEL_REFRESH_INTERVAL_SECONDS = int(os.environ.get("MODEL_REFRESH_INTERVAL_SECONDS", "60"))
 
 mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
 logger.info("Loading model from MLflow Production...")
 logger.info(f"Using MLflow tracking URI: {MLFLOW_TRACKING_URI}")
 
-model = mlflow.pytorch.load_model(
-    MODEL_URI
-)
-
-model.eval()
-
-
-# ---------------- FETCH MODEL METADATA ---------------- #
-
 client = MlflowClient()
+model = None
+latest_versions = []
+run_id = None
+version = None
+run_name = "unknown"
+f1 = None
+acc = None
+model_last_refresh_at = None
+_last_model_refresh_check = 0.0
+_model_lock = threading.RLock()
 
-latest_versions = client.get_latest_versions(
-    name="MalariaClassifier",
-    stages=["Production"]
-)
 
-if latest_versions:
-    version_info = latest_versions[0]
-    run_id = version_info.run_id
-    version = version_info.version
+def fetch_latest_production_model():
+    latest = client.get_latest_versions(
+        name="MalariaClassifier",
+        stages=["Production"]
+    )
+    if not latest:
+        return None, []
 
-    run = client.get_run(run_id)
+    version_info = latest[0]
+    active_run_id = version_info.run_id
+    active_version = version_info.version
+    run = client.get_run(active_run_id)
 
-    run_name = run.data.tags.get("mlflow.runName", "unknown")
-    f1 = run.data.metrics.get("test_f1")
-    acc = run.data.metrics.get("test_accuracy")
+    return {
+        "latest_versions": latest,
+        "run_id": active_run_id,
+        "version": active_version,
+        "run_name": run.data.tags.get("mlflow.runName", "unknown"),
+        "f1": run.data.metrics.get("test_f1"),
+        "acc": run.data.metrics.get("test_accuracy"),
+    }, latest
 
-    logger.info("🚀 Serving MLflow Production Model")
-    logger.info(f"Version: {version}")
-    logger.info(f"Run Name: {run_name}")
-    logger.info(f"Run ID: {run_id}")
-    logger.info(f"F1 Score: {f1}")
-    logger.info(f"Accuracy: {acc}")
 
-else:
-    logger.warning("No Production model found!")
+def refresh_model_if_needed(force=False):
+    global model, latest_versions, run_id, version, run_name, f1, acc
+    global model_last_refresh_at, _last_model_refresh_check
+
+    now = time.time()
+    if not force and (now - _last_model_refresh_check) < MODEL_REFRESH_INTERVAL_SECONDS:
+        return False
+
+    with _model_lock:
+        if not force and (now - _last_model_refresh_check) < MODEL_REFRESH_INTERVAL_SECONDS:
+            return False
+
+        _last_model_refresh_check = now
+
+        try:
+            metadata, latest = fetch_latest_production_model()
+            if metadata is None:
+                logger.warning("No Production model found in MLflow.")
+                return False
+
+            current_version = str(version) if version is not None else None
+            latest_version = str(metadata["version"])
+
+            if force or model is None or current_version != latest_version:
+                loaded_model = mlflow.pytorch.load_model(MODEL_URI)
+                loaded_model.eval()
+
+                model = loaded_model
+                latest_versions = metadata["latest_versions"]
+                run_id = metadata["run_id"]
+                version = metadata["version"]
+                run_name = metadata["run_name"]
+                f1 = metadata["f1"]
+                acc = metadata["acc"]
+                model_last_refresh_at = datetime.now(timezone.utc).isoformat()
+
+                if version is not None:
+                    model_version.set(int(version))
+
+                logger.info("🚀 Serving MLflow Production Model")
+                logger.info(f"Version: {version}")
+                logger.info(f"Run Name: {run_name}")
+                logger.info(f"Run ID: {run_id}")
+                logger.info(f"F1 Score: {f1}")
+                logger.info(f"Accuracy: {acc}")
+                return True
+
+            model_last_refresh_at = datetime.now(timezone.utc).isoformat()
+            latest_versions = latest
+            return False
+
+        except Exception as exc:
+            logger.error(f"Model refresh failed: {exc}")
+            return False
+
+
+def get_model_sync_status(force_refresh=False):
+    try:
+        metadata, _ = fetch_latest_production_model()
+    except Exception as exc:
+        logger.warning(f"Could not inspect Production model status: {exc}")
+        metadata = None
+
+    latest_production_version = metadata["version"] if metadata else None
+    latest_production_run_id = metadata["run_id"] if metadata else None
+    serving_version = version
+    stale = (
+        latest_production_version is not None
+        and str(latest_production_version) != str(serving_version)
+    )
+
+    refreshed = False
+    if force_refresh and stale:
+        refreshed = refresh_model_if_needed(force=True)
+        serving_version = version
+        stale = (
+            latest_production_version is not None
+            and str(latest_production_version) != str(serving_version)
+        )
+
+    return {
+        "serving_version": serving_version,
+        "latest_production_version": latest_production_version,
+        "latest_production_run_id": latest_production_run_id,
+        "model_loaded": model is not None,
+        "stale": stale,
+        "refreshed": refreshed,
+        "last_refresh_at": model_last_refresh_at,
+    }
+
+
+def latest_run_promoted_successfully(status_payload):
+    latest_run = (status_payload or {}).get("latest_run") or {}
+    if latest_run.get("state") != "success":
+        return False
+
+    for task in (status_payload or {}).get("task_instances", []):
+        if task.get("task_id") == "promote_model" and task.get("state") == "success":
+            return True
+
+    return False
+
+
+refresh_model_if_needed(force=True)
+
+
+_dvc_run_lock = threading.Lock()
+_dvc_run_state = {
+    "running": False,
+    "current_stage": None,
+    "started_at": None,
+    "finished_at": None,
+    "return_code": None,
+    "status": "idle",
+    "recent_logs": deque(maxlen=200),
+    "last_command": "dvc repro",
+}
+
+
+def _append_dvc_log(line):
+    cleaned = str(line).rstrip("\n")
+    if cleaned:
+        _dvc_run_state["recent_logs"].append(cleaned)
+
+
+def _set_dvc_state(**updates):
+    with _dvc_run_lock:
+        _dvc_run_state.update(updates)
+
+
+def _run_dvc_repro_background():
+    _set_dvc_state(
+        running=True,
+        current_stage=None,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        finished_at=None,
+        return_code=None,
+        status="running",
+    )
+    _dvc_run_state["recent_logs"].clear()
+    _append_dvc_log("Starting `dvc repro` inside the backend container...")
+
+    try:
+        process = subprocess.Popen(
+            ["dvc", "repro"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+
+        stage_pattern = re.compile(r"Running stage '([^']+)'")
+
+        if process.stdout is not None:
+            for line in process.stdout:
+                _append_dvc_log(line)
+                match = stage_pattern.search(line)
+                if match:
+                    _set_dvc_state(current_stage=match.group(1))
+
+        return_code = process.wait()
+        status = "completed" if return_code == 0 else "failed"
+        _set_dvc_state(
+            running=False,
+            finished_at=datetime.now(timezone.utc).isoformat(),
+            return_code=return_code,
+            status=status,
+        )
+
+        if return_code == 0:
+            _append_dvc_log("DVC repro completed successfully.")
+            retraining_triggered_total.inc()
+            refresh_model_if_needed(force=True)
+        else:
+            _append_dvc_log(f"DVC repro failed with exit code {return_code}.")
+
+    except Exception as exc:
+        _append_dvc_log(f"Failed to start DVC repro: {exc}")
+        _set_dvc_state(
+            running=False,
+            finished_at=datetime.now(timezone.utc).isoformat(),
+            return_code=-1,
+            status="failed",
+        )
+
+
+def start_dvc_repro():
+    with _dvc_run_lock:
+        if _dvc_run_state["running"]:
+            return False
+
+        thread = threading.Thread(target=_run_dvc_repro_background, daemon=True)
+        thread.start()
+        return True
+
+
+def get_dvc_repro_status():
+    with _dvc_run_lock:
+        return {
+            "running": _dvc_run_state["running"],
+            "status": _dvc_run_state["status"],
+            "current_stage": _dvc_run_state["current_stage"],
+            "started_at": _dvc_run_state["started_at"],
+            "finished_at": _dvc_run_state["finished_at"],
+            "return_code": _dvc_run_state["return_code"],
+            "recent_logs": list(_dvc_run_state["recent_logs"]),
+            "last_command": _dvc_run_state["last_command"],
+        }
 
 
 # ---------------- PREPROCESS ---------------- #
@@ -377,17 +877,29 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    refresh_model_if_needed()
+    return {
+        "status": "ok",
+        "model_loaded": model is not None,
+        "model_version": version,
+        "model_last_refresh_at": model_last_refresh_at,
+    }
 
 
 @app.get("/ready")
 def ready():
-    return {"ready": True}
+    refresh_model_if_needed()
+    return {
+        "ready": model is not None,
+        "model_loaded": model is not None,
+        "model_version": version,
+    }
 
 
 @app.middleware("http")
 async def track_requests(request, call_next):
     start = time.time()
+    refresh_model_if_needed()
 
     response = await call_next(request)
 
@@ -434,10 +946,17 @@ def is_valid_image(image, tensor):
 async def predict(file: UploadFile = File(...)):
 
     try:
+        refresh_model_if_needed()
+        if model is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Production model is not loaded yet"
+            )
+
         logger.info(f"Received file: {file.filename}")
 
         # -------- INPUT VALIDATION -------- #
-        if file.content_type not in ["image/jpeg", "image/png"]:
+        '''if file.content_type not in ["image/jpeg", "image/png"]:
             log_failure({
                 "filename": file.filename,
                 "type": "invalid_input",
@@ -445,7 +964,7 @@ async def predict(file: UploadFile = File(...)):
                 "timestamp": time.time()
             })
             invalid_image_uploads_total.inc()
-            raise HTTPException(status_code=422, detail="Only JPG and PNG images are supported")
+            raise HTTPException(status_code=422, detail="Only JPG and PNG images are supported")'''
 
         image_bytes = await file.read()
 
@@ -457,6 +976,7 @@ async def predict(file: UploadFile = File(...)):
                 "timestamp": time.time()
             })
             invalid_image_uploads_total.inc()
+            _global_counts["invalid"] += 1
             raise HTTPException(status_code=400, detail="Empty file uploaded")
 
         try:
@@ -465,10 +985,14 @@ async def predict(file: UploadFile = File(...)):
             log_failure({
                 "filename": file.filename,
                 "type": "invalid_input",
-                "reason": "corrupt_image",
+                "reason": "not_an_image_or_corrupt",
                 "timestamp": time.time()
             })
+
             invalid_image_uploads_total.inc()
+
+            _global_counts["invalid"] += 1
+
             raise HTTPException(status_code=400, detail="Invalid image file")
 
         # -------- PREPROCESS + DRIFT -------- #
@@ -485,15 +1009,16 @@ async def predict(file: UploadFile = File(...)):
         # -------- INFERENCE -------- #
         start_time = time.time()
 
-        with torch.no_grad():
-            outputs = model(input_tensor)
+        with _model_lock:
+            with torch.no_grad():
+                outputs = model(input_tensor)
 
-            probs = torch.softmax(outputs, dim=1)
-            pred = probs.argmax(dim=1).item()
-            confidence = probs.max().item()
-            confidence_sum.inc(confidence)
-            confidence_count.inc()
-            entropy = -torch.sum(probs * torch.log(probs + 1e-10)).item()
+                probs = torch.softmax(outputs, dim=1)
+                pred = probs.argmax(dim=1).item()
+                confidence = probs.max().item()
+                confidence_sum.inc(confidence)
+                confidence_count.inc()
+                entropy = -torch.sum(probs * torch.log(probs + 1e-10)).item()
 
         latency = time.time() - start_time
         inference_latency.observe(latency)
@@ -507,6 +1032,7 @@ async def predict(file: UploadFile = File(...)):
         if is_ood:
             label = "ood"
             ood_total.inc()
+            _global_counts["ood"] += 1
         elif low_conf or high_entropy:
             label = "uncertain"
 
@@ -540,7 +1066,7 @@ async def predict(file: UploadFile = File(...)):
 
         # ---- UPDATE RUNTIME COUNTS ----
         update_runtime_counts(
-                0 if label in ["ood"] else confidence,
+                confidence,
                 is_ood
             )
 
@@ -672,15 +1198,76 @@ def metrics():
             "low_confidence_rate": round(low_conf_rate, 3),
             "ood_rate": round(ood_rate, 3),
             "drift_detected": bool(drift_detected._value.get()),
-            "model_version": int(model_version._value.get()) if model_version._value.get() else 0
+            "ood_count": _global_counts["ood"],
+            "invalid_count": _global_counts["invalid"],
+            "confidence_samples": _confidence_stats["count"],
         }
+
 
     except Exception:
         raise HTTPException(
             status_code=500,
             detail="Failed to compute metrics"
         )
-    
+
+
+@app.get("/api/feedback/stats")
+def feedback_stats():
+    try:
+        labelled_by_class = {
+            class_name: count_feedback_files(LABELLED_DIR / class_name)
+            for class_name in params["data"]["classes"]
+        }
+
+        return {
+            "unlabeled_count": count_feedback_files(UNLABELED_DIR),
+            "unlabeled_ood_count": count_feedback_files(UNLABELED_OOD_DIR),
+            "labelled_total": sum(labelled_by_class.values()),
+            "labelled_by_class": labelled_by_class,
+            "labelled_root": str(LABELLED_DIR),
+            "unlabeled_root": UNLABELED_DIR,
+            "unlabeled_ood_root": UNLABELED_OOD_DIR,
+        }
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to compute feedback stats"
+        )
+
+
+@app.post("/api/feedback/upload-labelled-zip")
+async def upload_labelled_zip(file: UploadFile = File(...)):
+    try:
+        if not file.filename or not file.filename.lower().endswith(".zip"):
+            raise HTTPException(
+                status_code=400,
+                detail="Please upload a .zip file containing labelled feedback."
+            )
+
+        zip_bytes = await file.read()
+        result = extract_labelled_zip_to_feedback(zip_bytes)
+
+        uploaded_total = result["total_extracted"]
+        if uploaded_total:
+            labelled_images_received_total.inc(uploaded_total)
+
+        return {
+            "status": "success",
+            "message": "Labelled feedback uploaded successfully.",
+            **result,
+        }
+
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="The uploaded file is not a valid ZIP archive.")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Failed to ingest labelled ZIP: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to ingest labelled ZIP.")
+
+
 @app.get("/api/failures")
 def get_failures(limit: int = 50, type: str = None):
     try:
@@ -704,14 +1291,68 @@ def get_failures(limit: int = 50, type: str = None):
 
 @app.post("/retrain")
 def retrain():
+    if start_dvc_repro():
+        return {
+            "status": "started",
+            "message": "DVC repro started in the background.",
+            "repro_status": get_dvc_repro_status(),
+        }
+
+    return {
+        "status": "already_running",
+        "message": "A DVC repro run is already in progress.",
+        "repro_status": get_dvc_repro_status(),
+    }
+
+
+@app.post("/api/retraining/trigger")
+def trigger_retraining_dag():
     try:
-        subprocess.run(["dvc", "repro"])
+        payload, _ = airflow_request(
+            "POST",
+            f"/dags/{AIRFLOW_DAG_ID}/dagRuns",
+            payload={
+                "conf": {"trigger_source": "frontend"},
+            },
+        )
         retraining_triggered_total.inc()
-        return {"status": "Manual retraining triggered (Airflow not involved)"}
-    except Exception:
+        return {
+            "status": "triggered",
+            "dag_id": AIRFLOW_DAG_ID,
+            "dag_run_id": payload.get("dag_run_id") or payload.get("dagRunId"),
+            "state": payload.get("state"),
+            "message": "Airflow retraining DAG triggered successfully",
+        }
+    except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail="Retraining failed"
+            detail=f"Failed to trigger Airflow DAG: {exc}"
+        )
+
+
+@app.get("/api/retraining/status")
+def retraining_status():
+    try:
+        status_payload = fetch_retraining_status()
+        status_payload["model_sync"] = get_model_sync_status(
+            force_refresh=latest_run_promoted_successfully(status_payload)
+        )
+        return status_payload
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to fetch Airflow retraining status: {exc}"
+        )
+
+
+@app.post("/api/model/refresh")
+def refresh_serving_model():
+    try:
+        return get_model_sync_status(force_refresh=True)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to refresh serving model: {exc}"
         )
 
 
@@ -723,14 +1364,19 @@ def pipeline_status():
         result = subprocess.run(
             ["dvc", "status"],
             capture_output=True,
-            text=True
+            text=True,
+            check=False,
         )
 
-        dvc_output = result.stdout.strip()
+        output = (result.stdout + "\n" + result.stderr).strip()
+        dvc_status = summarize_dvc_status_output(output)
 
         return {
-            "dvc_status": dvc_output,
-            "clean": "up to date" in dvc_output.lower()
+            "dvc": dvc_status,
+            "return_code": result.returncode,
+            "repro_command": "docker compose exec backend dvc repro",
+            "repro_status": get_dvc_repro_status(),
+            "model_sync": get_model_sync_status(),
         }
 
     except Exception:
@@ -745,8 +1391,10 @@ def pipeline_status():
 @app.get("/model/info")
 def model_info():
     try:
+        refresh_model_if_needed()
         if latest_versions:
-            model_version.set(int(version))
+            if version is not None:
+                model_version.set(int(version))
             return {
                 "model_name": "MalariaClassifier",
                 "version": version,
@@ -785,3 +1433,13 @@ async def receive_alert(request: Request):
 def get_alerts():
     return {"alerts": ACTIVE_ALERTS}
 
+@app.post("/log_invalid")
+def log_invalid(data: dict):
+    log_failure({
+        "filename": data["filename"],
+        "type": "invalid_input",
+        "reason": data["reason"],
+        "timestamp": time.time()
+    })
+    invalid_image_uploads_total.inc()
+    return {"status": "logged"}

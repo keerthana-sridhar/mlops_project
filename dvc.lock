@@ -5,9 +5,9 @@ stages:
     deps:
     - path: data/raw/cell_images
       hash: md5
-      md5: 512e5fde2a997523fca9b0e49eda8bdf.dir
-      size: 351707020
-      nfiles: 27622
+      md5: afbbeea7abcb8d817111d18b8ad09035.dir
+      size: 351824551
+      nfiles: 27632
     - path: src/eda.py
       hash: md5
       md5: 5f91b03e8f0feb6d333534b2588b97bf
@@ -26,16 +26,16 @@ stages:
     outs:
     - path: reports/metrics/eda_metrics.json
       hash: md5
-      md5: d94ef78c8cd711352701632e36949b1a
+      md5: 15a96f6d06f8dbaf4f265b5a62885ae4
       size: 608
   preprocess:
     cmd: python src/preprocess.py
     deps:
     - path: data/raw/cell_images
       hash: md5
-      md5: 512e5fde2a997523fca9b0e49eda8bdf.dir
-      size: 351707020
-      nfiles: 27622
+      md5: afbbeea7abcb8d817111d18b8ad09035.dir
+      size: 351824551
+      nfiles: 27632
     - path: src/preprocess.py
       hash: md5
       md5: 346b269884164e874cbcce1e42070398
@@ -59,17 +59,17 @@ stages:
     outs:
     - path: data/processed/split
       hash: md5
-      md5: ab92cee4b7ed053d0ea4456f3b70d41c.dir
-      size: 351707020
-      nfiles: 27622
+      md5: c03cb8ad121d746db5d8dd84d667080f.dir
+      size: 351824551
+      nfiles: 27632
   resize:
     cmd: python src/resize.py
     deps:
     - path: data/processed/split
       hash: md5
-      md5: ab92cee4b7ed053d0ea4456f3b70d41c.dir
-      size: 351707020
-      nfiles: 27622
+      md5: c03cb8ad121d746db5d8dd84d667080f.dir
+      size: 351824551
+      nfiles: 27632
     - path: src/resize.py
       hash: md5
       md5: cff846e17ec5b86d12a20bb0da2e2e5d
@@ -92,9 +92,9 @@ stages:
     outs:
     - path: data/processed/resized
       hash: md5
-      md5: 5991349d147041d3ba88ee931e92e723.dir
-      size: 781616014
-      nfiles: 27420
+      md5: f72d2333290467125367b7860add1892.dir
+      size: 782016011
+      nfiles: 27430
   augment:
     cmd: python src/augment.py
     deps:
@@ -136,9 +136,9 @@ stages:
     deps:
     - path: data/processed/resized
       hash: md5
-      md5: 5991349d147041d3ba88ee931e92e723.dir
-      size: 781616014
-      nfiles: 27420
+      md5: f72d2333290467125367b7860add1892.dir
+      size: 782016011
+      nfiles: 27430
     - path: src/models.py
       hash: md5
       md5: 0e16504f9d8c0d4f022787d1a1f59ad4
@@ -161,29 +161,29 @@ stages:
         train:
           batch_size: 16
           epochs: 1
-          lr: 0.0003
+          lr: 0.002
           model: cnn
     outs:
     - path: models
       hash: md5
-      md5: 6c2f38710e2fa0bd4d1f846143f6b519.dir
+      md5: cc7c86235c261299e775850b7fd0e8dc.dir
       size: 47800853
       nfiles: 1
     - path: reports/metrics/train_metrics.json
       hash: md5
-      md5: 9e4afdd5523806ab6fe051a5277f3c1f
-      size: 347
+      md5: 2bf3c5753c68181e48b6f1d1a49adf10
+      size: 346
   evaluate:
     cmd: python src/evaluate.py
     deps:
     - path: data/processed/resized
       hash: md5
-      md5: 5991349d147041d3ba88ee931e92e723.dir
-      size: 781616014
-      nfiles: 27420
+      md5: f72d2333290467125367b7860add1892.dir
+      size: 782016011
+      nfiles: 27430
     - path: models
       hash: md5
-      md5: 6c2f38710e2fa0bd4d1f846143f6b519.dir
+      md5: cc7c86235c261299e775850b7fd0e8dc.dir
       size: 47800853
       nfiles: 1
     - path: src/evaluate.py
@@ -208,28 +208,28 @@ stages:
         train:
           batch_size: 16
           epochs: 1
-          lr: 0.0003
+          lr: 0.002
           model: cnn
     outs:
     - path: reports/metrics/eval_metrics.json
       hash: md5
-      md5: 4ca0108d42afcd949576972cec28d3e1
+      md5: b7156c159bee8c3a4f4909c2b75d5795
       size: 139
     - path: reports/plots/confusion_matrix.csv
       hash: md5
-      md5: 60e98e2ec86a957af53b94c5a495e01c
-      size: 33
+      md5: 5b101bbc23631a827be903608a6ebbed
+      size: 32
     - path: reports/plots/eval_metrics_plots.json
       hash: md5
-      md5: cad83c5cbb4aba3ae34c531c94780db0
+      md5: 59f3336d50666b736d125809fc5a375d
       size: 311
     - path: reports/plots/per_class_f1.json
       hash: md5
-      md5: 382d10f15a35289e97b142d4bda409ac
+      md5: 50f1d7779d23d6a50a0a1544766de3f0
       size: 150
     - path: reports/plots/scatter_metrics.json
       hash: md5
-      md5: a1463129dc1c5261d4204f29c5e8f670
+      md5: 08854ba686b432f04823f53544f1f079
       size: 88
   merge_feedback:
     cmd: python src/merge_feedback.py
@@ -246,6 +246,6 @@ stages:
     outs:
     - path: data/raw/cell_images
       hash: md5
-      md5: 512e5fde2a997523fca9b0e49eda8bdf.dir
-      size: 351707020
-      nfiles: 27622
+      md5: afbbeea7abcb8d817111d18b8ad09035.dir
+      size: 351824551
+      nfiles: 27632

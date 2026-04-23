@@ -8,6 +8,7 @@ import zipfile
 import io
 import json
 import matplotlib.pyplot as plt
+import hashlib
 
 import mimetypes
 
@@ -40,6 +41,15 @@ try:
     st.sidebar.metric(
         "Total Predictions",
         metrics.get("total_predictions", 0)
+    )
+    st.sidebar.metric(
+    "OOD Count",
+    metrics.get("ood_count", 0)
+)
+
+    st.sidebar.metric(
+        "Invalid Inputs",
+        metrics.get("invalid_count", 0)
     )
 
     st.sidebar.metric(
@@ -121,21 +131,44 @@ if page == "User Guide":
     st.title("📘 User Guide")
 
     st.markdown("""
-    ### 🧪 How to Use
+    ### What This App Does
 
-    1. Go to **Home**
-    2. Upload blood smear images
+    This system predicts whether a blood smear cell image is **Parasitized** or **Uninfected**, monitors live model quality, and supports a feedback loop for retraining.
+
+    ### How to Use
+
+    1. Open **Home**
+    2. Upload JPG, PNG, or ZIP files containing images
     3. Click **Run Analysis**
-    4. View predictions and download results
+    4. Review prediction labels, confidence scores, latency, and alerts
 
-    ### 📊 Output
+    ### Understanding OOD and Uncertain Cases
 
-    - Prediction: Parasitized / Uninfected
-    - Confidence Score
+    - If the model detects an **OOD** (out-of-distribution) or **uncertain** sample, the file is saved into the feedback queue.
+    - If many OOD or uncertain files accumulate, they will appear in the unlabelled queues and should be manually reviewed before retraining.
+    - These files are stored under:
+      - `data/feedback/unlabeled`
+      - `data/feedback/unlabeled_ood`
+    - A physician or domain expert should manually annotate those images and move them into:
+      - `data/feedback/labelled/Parasitized`
+      - `data/feedback/labelled/Uninfected`
+    - You can also upload a `labelled.zip` from the **Pipeline** page. The ZIP must contain both `parasitized` and `uninfected` subfolders.
 
-    ### ⚠️ Notes
+    ### Retraining Workflow
 
-    - Supported formats: JPG, PNG, ZIP (containing images)
+    - Use the **Pipeline** page to trigger retraining through **Airflow**.
+    - The UI shows the latest Airflow DAG run, task-by-task progress, and the current **DVC snapshot status**.
+    - When a newer MLflow Production model is available, the backend refreshes the serving model automatically.
+
+    ### Running The Full Reproducible DVC Pipeline In Docker
+
+    Run this from the project root:
+
+    ```bash
+    docker compose exec backend dvc repro
+    ```
+
+    This is reproducible because the command runs inside the same containerized environment, using the same tracked code, parameters, and mounted project workspace.
     """)
 
 # ── HOME ───────────────────────────────
@@ -188,33 +221,45 @@ elif page == "Home":
 
     valid_files = []
     failed_files = []
+    duplicate_files = []
+    seen_upload_hashes = set()
 
     # -------- PROCESS INPUTS -------- #
+    
     def process_file(file, name_override=None):
         filename = name_override or file.name
 
-        # Size check
-        size_mb = len(file.getvalue()) / (1024 * 1024)
-        if size_mb > MAX_SIZE_MB:
-            failed_files.append({
-                "filename": filename,
-                "reason": "File too large"
-            })
-            return
-
         try:
-            image = Image.open(file)
-            image.verify()  # 🔥 detects corrupt / fake images
+            file_bytes = file.getvalue()
+            if not file_bytes:
+                failed_files.append({"filename": filename, "reason": "empty_file"})
+                return
 
-            image = Image.open(file).convert("RGB")  # reopen after verify
+            if len(file_bytes) > MAX_SIZE_MB * 1024 * 1024:
+                failed_files.append({"filename": filename, "reason": "file_too_large"})
+                return
 
-            valid_files.append((filename, file, image))
+            file_hash = hashlib.sha256(file_bytes).hexdigest()
+            if file_hash in seen_upload_hashes:
+                duplicate_files.append(filename)
+                return
+            seen_upload_hashes.add(file_hash)
+
+            try:
+                image = Image.open(io.BytesIO(file_bytes))
+                image.verify()
+
+                # reopen fresh buffer
+                image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+
+            except Exception:
+                image = None
 
         except Exception:
-            failed_files.append({
-                "filename": filename,
-                "reason": "Corrupt file"
-            })
+            failed_files.append({"filename": filename, "reason": "read_failed"})
+            return
+
+        valid_files.append((filename, file_bytes, image, image is not None))
 
     if uploaded_files:
 
@@ -226,19 +271,22 @@ elif page == "Home":
                     zip_bytes = io.BytesIO(file.getvalue())
                     with zipfile.ZipFile(zip_bytes) as z:
                         for name in z.namelist():
-                            if name.lower().endswith(("png", "jpg", "jpeg")):
+                            if name.endswith("/"):
+                                continue
+                            if "__MACOSX" in name or os.path.basename(name).startswith("._"):
+                                continue
 
-                                # Skip macOS metadata files ONLY
-                                if "__MACOSX" in name or os.path.basename(name).startswith("._"):
-                                    continue
-                                extracted = io.BytesIO(z.read(name))
-                                extracted.name = name
-                                process_file(extracted, name_override=name)
+                            extracted = io.BytesIO(z.read(name))
+                            extracted.name = name
+                            process_file(extracted, name_override=name)
                 except Exception:
-                    failed_files.append({
-                        "filename": file.name,
-                        "reason": "Invalid ZIP file"
-                    })
+                    requests.post(
+                        f"{BACKEND_URL}/log_invalid",
+                        json={
+                            "filename": file.name,
+                            "reason": "invalid_zip"
+                        }
+                    )
             else:
                 process_file(file)
 
@@ -248,14 +296,19 @@ elif page == "Home":
         if valid_files:
             cols = st.columns(min(4, len(valid_files)))
 
-            for i, (_, _, image) in enumerate(valid_files):
-                cols[i % 4].image(image, use_container_width=True)
+            for i, (_, _, image, is_valid) in enumerate(valid_files):
+                if image is not None:
+                    cols[i % 4].image(image, use_container_width=True)
+                else:
+                    cols[i % 4].warning("Invalid image ❌")
         else:
             st.warning("No valid images to preview (all files are corrupt or invalid)")
 
         # Show failed files early
         if failed_files:
             st.warning(f"{len(failed_files)} files skipped ❌")
+        if duplicate_files:
+            st.info(f"{len(duplicate_files)} duplicate uploads were ignored to prevent double-counting.")
 
         # -------- RUN ANALYSIS -------- #
         if st.button("🔍 Run Analysis"):
@@ -268,15 +321,14 @@ elif page == "Home":
 
             with st.spinner(f"Processing {len(valid_files)} images..."):
 
-                for filename, file, _ in valid_files:
+                for filename, file_bytes, _, is_valid in valid_files:
                     try:
-                        mime_type = mimetypes.guess_type(filename)[0]
-
-                        if mime_type is None:
-                            mime_type = "application/octet-stream"
-
                         files = {
-                            "file": (filename, file.getvalue(), mime_type)
+                            "file": (
+                                filename,
+                                file_bytes,
+                                mimetypes.guess_type(filename)[0] or "application/octet-stream",
+                            )
                         }
                         start = time.time()
                         response = requests.post(
@@ -319,10 +371,12 @@ elif page == "Home":
     "alert": alert,
     "message": res.get("message", "")
 })
+
                         else:
                             results.append({
                                 "filename": filename,
-                                "status": "failed"
+                                "status": "error",
+                                "alert": "❌ Invalid input (caught by backend)"
                             })
 
                     except Exception:
@@ -344,7 +398,8 @@ elif page == "Home":
                 if r["status"] == "warning":
                     st.warning(f"{r['filename']}: {r['alert']} — {r['message']}")
                 elif r["status"] == "error":
-                    st.error(f"{r['filename']}: {r['alert']} — {r['message']}")
+                    msg = r.get("message", "No additional details")
+                    st.error(f"{r['filename']}: {r['alert']} — {msg}")
             st.subheader("📊 Live Model Monitoring")
 
             try:
@@ -386,27 +441,154 @@ elif page == "Pipeline":
     st.title("⚙️ ML Pipeline")
 
     st.subheader("📌 Pipeline Architecture")
-    st.image("frontend/assets/pipeline.png")  # your diagram
+    st.image("frontend/assets/pipeline.png")
 
-    st.caption("Note: Monitoring and drift detection are planned extensions.")
+    st.caption("Airflow orchestrates retraining, while DVC shows whether the tracked snapshot is aligned with the latest accepted model artifacts.")
 
     st.subheader("🔁 DVC Pipeline DAG")
-    st.image("frontend/assets/dvc_dag.png")  # screenshot from dvc dag
+    st.image("frontend/assets/dvc_dag.png")
 
-    st.subheader("📟 Pipeline Status")
+    st.subheader("📦 Feedback Queue")
     try:
-        res = requests.get(f"{BACKEND_URL}/pipeline/status")
-        data = res.json()
+        feedback_res = requests.get(f"{BACKEND_URL}/api/feedback/stats", timeout=10)
+        feedback_res.raise_for_status()
+        feedback = feedback_res.json()
 
-        if data.get("clean"):
-            st.success("Pipeline is up-to-date ✅")
-        else:
-            st.warning("Pipeline needs update ⚠️")
+        q1, q2, q3, q4 = st.columns(4)
+        q1.metric("Unlabelled Queue", feedback.get("unlabeled_count", 0))
+        q2.metric("OOD Queue", feedback.get("unlabeled_ood_count", 0))
+        q3.metric("Labelled Total", feedback.get("labelled_total", 0))
+        q4.metric("Parasitized Labels", feedback.get("labelled_by_class", {}).get("Parasitized", 0))
 
-        st.code(data.get("dvc_status", "No output"), language="bash")
-
+        st.caption(
+            "Manual review workflow: clinicians should inspect files in the unlabelled queues, annotate them, and move them to "
+            "`data/feedback/labelled/Parasitized` or `data/feedback/labelled/Uninfected`. "
+            "If many OOD files accumulate, package the reviewed data as `labelled.zip` with both class folders and upload it below."
+        )
     except Exception:
-        st.error("Could not fetch pipeline status")
+        st.warning("Feedback queue stats unavailable")
+
+    st.subheader("📥 Upload Labelled Feedback ZIP")
+    labelled_zip = st.file_uploader(
+        "Upload `labelled.zip` containing `parasitized` and `uninfected` subfolders",
+        type=["zip"],
+        key="labelled_zip_upload",
+    )
+
+    if st.button("Upload labelled.zip", use_container_width=True):
+        if labelled_zip is None:
+            st.error("Choose a labelled ZIP file first.")
+        else:
+            with st.spinner("Validating and extracting labelled feedback..."):
+                try:
+                    upload_res = requests.post(
+                        f"{BACKEND_URL}/api/feedback/upload-labelled-zip",
+                        files={"file": (labelled_zip.name, labelled_zip.getvalue(), "application/zip")},
+                        timeout=120,
+                    )
+                    data = upload_res.json()
+                    if upload_res.status_code == 200:
+                        st.success(data.get("message", "Labelled ZIP uploaded successfully."))
+                        st.write("Extracted by class:", data.get("extracted_by_class", {}))
+                    else:
+                        st.error(data.get("detail", "Failed to upload labelled ZIP."))
+                except Exception as exc:
+                    st.error(f"Failed to upload labelled ZIP: {exc}")
+
+    st.subheader("🚀 Airflow Retraining")
+    control_col1, control_col2 = st.columns(2)
+
+    if control_col1.button("Trigger Retraining DAG", use_container_width=True):
+        with st.spinner("Triggering the Airflow retraining DAG..."):
+            try:
+                retrain_res = requests.post(f"{BACKEND_URL}/api/retraining/trigger", timeout=30)
+                data = retrain_res.json()
+                if retrain_res.status_code == 200:
+                    st.success(data.get("message", "Airflow retraining DAG triggered"))
+                    st.caption(f"Run ID: {data.get('dag_run_id')}")
+                else:
+                    st.error(data.get("detail", "Failed to trigger the retraining DAG"))
+            except Exception as exc:
+                st.error(f"Failed to trigger Airflow retraining: {exc}")
+
+    control_col2.button("Refresh Status", use_container_width=True)
+
+    st.subheader("📟 Orchestration Status")
+    try:
+        retraining_res = requests.get(f"{BACKEND_URL}/api/retraining/status", timeout=10)
+        retraining_res.raise_for_status()
+        retraining = retraining_res.json()
+
+        model_sync = retraining.get("model_sync", {})
+        if model_sync.get("stale"):
+            refresh_res = requests.post(f"{BACKEND_URL}/api/model/refresh", timeout=20)
+            if refresh_res.status_code == 200:
+                model_sync = refresh_res.json()
+
+        latest_run = retraining.get("latest_run") or {}
+        task_instances = retraining.get("task_instances") or []
+
+        s1, s2, s3, s4 = st.columns(4)
+        s1.metric("Latest DAG State", str(latest_run.get("state", "idle")).title())
+        s2.metric("Serving Version", model_sync.get("serving_version") or "-")
+        s3.metric("Latest Production", model_sync.get("latest_production_version") or "-")
+        s4.metric("Tracked Tasks", len(task_instances))
+
+        if not latest_run:
+            st.info("No Airflow retraining run has been recorded yet.")
+        else:
+            st.caption(
+                f"Run ID: {latest_run.get('dag_run_id')} | Started: {latest_run.get('start_date') or '-'} | "
+                f"Finished: {latest_run.get('end_date') or 'still running'}"
+            )
+
+            latest_state = str(latest_run.get("state", "")).lower()
+            if latest_state == "success":
+                st.success("Latest Airflow retraining run completed successfully.")
+            elif latest_state in {"failed", "error"}:
+                st.error("Latest Airflow retraining run failed.")
+            elif latest_state:
+                st.info(f"Latest Airflow retraining run is `{latest_state}`.")
+
+        if model_sync.get("refreshed"):
+            st.success("Backend serving model refreshed to the latest Production version.")
+        elif model_sync.get("stale"):
+            st.warning("A newer Production model exists, but the backend is still serving the previous version.")
+
+        if task_instances:
+            task_df = pd.DataFrame(task_instances)
+            st.subheader("🧩 DAG Task States")
+            st.dataframe(task_df, use_container_width=True)
+
+    except Exception as exc:
+        st.error(f"Could not fetch Airflow retraining status: {exc}")
+
+    st.subheader("🗂️ DVC Snapshot Status")
+    try:
+        res = requests.get(f"{BACKEND_URL}/pipeline/status", timeout=30)
+        res.raise_for_status()
+        data = res.json()
+        dvc = data.get("dvc", {})
+        repro = data.get("repro_status", {})
+
+        d1, d2, d3 = st.columns(3)
+        d1.metric("DVC Status", "Up to date" if dvc.get("clean") else "Needs snapshot")
+        d2.metric("Pending Changes", len(dvc.get("entries", [])))
+        d3.metric("Legacy DVC Repro", str(repro.get("status", "idle")).title())
+
+        if dvc.get("clean"):
+            st.success(dvc.get("summary", "Pipeline is up to date"))
+        else:
+            st.warning(dvc.get("summary", "DVC changes are pending"))
+
+        if dvc.get("entries"):
+            st.dataframe(pd.DataFrame(dvc["entries"]), use_container_width=True)
+
+        with st.expander("Raw DVC Status"):
+            st.code(dvc.get("raw_output", "No output"), language="bash")
+
+    except Exception as exc:
+        st.error(f"Could not fetch DVC status: {exc}")
 
 # ── EXPERIMENTS ────────────────────────
 elif page == "Experiments":
@@ -429,3 +611,13 @@ elif page == "Experiments":
 
     except Exception:
         st.error("Could not fetch model info")
+
+    try:
+        health_res = requests.get(f"{BACKEND_URL}/health", timeout=10)
+        health = health_res.json()
+        st.subheader("🔄 Backend Refresh")
+        st.write("Model loaded:", health.get("model_loaded"))
+        st.write("Current serving version:", health.get("model_version"))
+        st.write("Last refresh check:", health.get("model_last_refresh_at"))
+    except Exception:
+        st.caption("Backend refresh status unavailable")

@@ -10,7 +10,9 @@ from torch.utils.data import DataLoader
 from models import get_model
 
 DEVICE = "cpu"
-CHECKPOINT = "finetune/checkpoint.pth"
+PRODUCTION_CHECKPOINT = "finetune/checkpoint.pth"
+CANDIDATE_CHECKPOINT = "finetune/candidate_checkpoint.pth"
+RUN_ID_FILE = "finetune/run_id.txt"
 DATA_DIR = "data/processed/incremental_resized"
 
 mlflow.set_tracking_uri(
@@ -47,9 +49,9 @@ print(f"✅ Dataset loaded: {len(dataset)} images, {len(loader)} batches", flush
 model = get_model(model_name, params)
 base_model_path = f"models/{model_name}.pth"
 
-if os.path.exists(CHECKPOINT):
-    model.load_state_dict(torch.load(CHECKPOINT, map_location=DEVICE))
-    print("🔁 Loaded finetuned checkpoint", flush=True)
+if os.path.exists(PRODUCTION_CHECKPOINT):
+    model.load_state_dict(torch.load(PRODUCTION_CHECKPOINT, map_location=DEVICE))
+    print("🔁 Loaded production checkpoint", flush=True)
 elif os.path.exists(base_model_path):
     model.load_state_dict(torch.load(base_model_path, map_location=DEVICE))
     print(f"📦 Loaded base model: {base_model_path}", flush=True)
@@ -91,21 +93,22 @@ with mlflow.start_run(run_name=run_name):
         print(f"✅ Epoch {epoch+1} complete | Avg Loss: {avg_loss:.4f}", flush=True)
 
     # Save checkpoint
-    torch.save(model.state_dict(), CHECKPOINT)
-    print("💾 Checkpoint saved", flush=True)
+    torch.save(model.state_dict(), CANDIDATE_CHECKPOINT)
+    print("💾 Candidate checkpoint saved", flush=True)
 
-    # Log to MLflow
-    mlflow.log_artifact(CHECKPOINT, artifact_path="finetune_checkpoint")
+    # Log the candidate artifact to MLflow; only accepted runs are registered later.
+    mlflow.log_artifact(CANDIDATE_CHECKPOINT, artifact_path="finetune_checkpoint")
     mlflow.pytorch.log_model(
         model,
         artifact_path="model",
-        registered_model_name="MalariaClassifier"
     )
+    mlflow.set_tag("candidate_checkpoint_path", CANDIDATE_CHECKPOINT)
+    mlflow.set_tag("promotion_ready", "pending_evaluation")
 
     # Save run_id for promote step
     run_id = mlflow.active_run().info.run_id
     os.makedirs("finetune", exist_ok=True)
-    with open("finetune/run_id.txt", "w") as f:
+    with open(RUN_ID_FILE, "w") as f:
         f.write(run_id)
     print(f"✅ MLflow run logged: {run_id}", flush=True)
 
