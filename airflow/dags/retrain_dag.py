@@ -11,7 +11,14 @@ PYTHON_CMD = "PYTHONUNBUFFERED=1 python"
 def check_new_data():
     if not os.path.exists(FEEDBACK_PATH):
         return False
-    return len(os.listdir(FEEDBACK_PATH)) > 0
+    
+    # Check subdirectories for actual image files, not just folder existence
+    image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
+    for root, dirs, files in os.walk(FEEDBACK_PATH):
+        for f in files:
+            if os.path.splitext(f)[1].lower() in image_extensions:
+                return True
+    return False
 
 
 with DAG(
@@ -49,15 +56,16 @@ with DAG(
     )
 
     snapshot = BashOperator(
-        task_id="dvc_snapshot",
-        bash_command="""
-            cd /opt/project &&
-            test -f finetune/checkpoint.pth &&
-            dvc add finetune/checkpoint.pth &&
-            dvc add data/processed/incremental_resized &&
-            (dvc push || echo "DVC push skipped")
-        """,
-    )
+    task_id="dvc_snapshot",
+    bash_command="""
+        cd /opt/project &&
+        rm -f .dvc/tmp/lock &&
+        test -f finetune/checkpoint.pth &&
+        dvc add finetune/checkpoint.pth &&
+        dvc add data/processed/incremental_resized &&
+        (dvc push || echo "DVC push skipped")
+    """,
+)
 
  
 

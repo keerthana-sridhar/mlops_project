@@ -296,34 +296,43 @@ def airflow_api_bases():
     return [base for i, base in enumerate(candidates) if base and base not in candidates[:i]]
 
 
+def get_airflow_token(base: str) -> str:
+    # Strip /api/v2 — the token endpoint is at the root level
+    root = base.replace("/api/v2", "").rstrip("/")
+    url = f"{root}/auth/token"
+    payload = json.dumps({
+        "username": AIRFLOW_API_USERNAME,
+        "password": AIRFLOW_API_PASSWORD
+    }).encode("utf-8")
+    req = urlrequest.Request(url, data=payload, method="POST")
+    req.add_header("Content-Type", "application/json")
+    with urlrequest.urlopen(req, timeout=10) as response:
+        body = json.loads(response.read().decode("utf-8"))
+        return body["access_token"]
+
+
 def airflow_request(method, path, payload=None, timeout=10):
-    auth = base64.b64encode(
-        f"{AIRFLOW_API_USERNAME}:{AIRFLOW_API_PASSWORD}".encode("utf-8")
-    ).decode("utf-8")
     errors = []
-
     for base in airflow_api_bases():
-        url = f"{base}{path}"
-        data = None if payload is None else json.dumps(payload).encode("utf-8")
-        req = urlrequest.Request(url, data=data, method=method.upper())
-        req.add_header("Authorization", f"Basic {auth}")
-        req.add_header("Accept", "application/json")
-        if data is not None:
-            req.add_header("Content-Type", "application/json")
-
         try:
+            token = get_airflow_token(base)
+            url = f"{base}{path}"
+            data = None if payload is None else json.dumps(payload).encode("utf-8")
+            req = urlrequest.Request(url, data=data, method=method.upper())
+            req.add_header("Authorization", f"Bearer {token}")
+            req.add_header("Accept", "application/json")
+            if data is not None:
+                req.add_header("Content-Type", "application/json")
             with urlrequest.urlopen(req, timeout=timeout) as response:
                 raw = response.read()
                 body = json.loads(raw.decode("utf-8")) if raw else {}
                 return body, base
         except urlerror.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="ignore")
-            errors.append(f"{exc.code} from {url}: {body or exc.reason}")
+            errors.append(f"{exc.code} from {base}{path}: {body or exc.reason}")
         except Exception as exc:
-            errors.append(f"{type(exc).__name__} from {url}: {exc}")
-
+            errors.append(f"{type(exc).__name__} from {base}: {exc}")
     raise RuntimeError("Airflow API unavailable. Tried: " + " | ".join(errors))
-
 
 def extract_collection(payload, *keys):
     for key in keys:
@@ -350,7 +359,7 @@ def summarize_dag_run(run):
 def fetch_retraining_status(limit=5):
     payload, base = airflow_request(
         "GET",
-        f"/dags/{AIRFLOW_DAG_ID}/dagRuns?limit={limit}&order_by=-start_date",
+        f"/dags/{AIRFLOW_DAG_ID}/dagRuns?limit={limit}&order_by=start_date&sort_direction=desc",
     )
 
     runs = [summarize_dag_run(run) for run in extract_collection(payload, "dag_runs", "dagRuns")]
@@ -1308,10 +1317,12 @@ def retrain():
 @app.post("/api/retraining/trigger")
 def trigger_retraining_dag():
     try:
+        from datetime import datetime, timezone
         payload, _ = airflow_request(
             "POST",
             f"/dags/{AIRFLOW_DAG_ID}/dagRuns",
             payload={
+                "logical_date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "conf": {"trigger_source": "frontend"},
             },
         )
