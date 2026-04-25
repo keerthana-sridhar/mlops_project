@@ -5,10 +5,9 @@ import time
 import mlflow
 from mlflow.tracking import MlflowClient
 from datetime import datetime
+from mlflow_utils import configure_mlflow
 
-mlflow.set_tracking_uri(
-    os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
-)
+configure_mlflow()
 
 MODEL_NAME = "MalariaClassifier"
 RUN_ID_FILE = "finetune/run_id.txt"

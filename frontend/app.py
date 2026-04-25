@@ -579,54 +579,7 @@ elif page == "Pipeline":
     except Exception as exc:
         st.error(f"Could not fetch Airflow retraining status: {exc}")
 
-    st.subheader("🗂️ DVC Reproducibility Status")
-    try:
-        res = requests.get(f"{BACKEND_URL}/pipeline/status", timeout=30)
-        res.raise_for_status()
-        data = res.json()
-        dvc = data.get("dvc", {})
-        repro = data.get("repro_status", {})
-        dvc_state = dvc.get("status")
-        if dvc_state == "up_to_date":
-            dvc_label = "Up to date"
-        elif dvc_state == "busy":
-            dvc_label = "Busy"
-        elif dvc_state == "unavailable":
-            dvc_label = "Unavailable"
-        else:
-            dvc_label = "Needs attention"
-        pending_value = "-" if dvc_state in {"busy", "unavailable"} else len(dvc.get("entries", []))
 
-        d1, d2, d3 = st.columns(3)
-        d1.metric("DVC Status", dvc_label)
-        d2.metric("Pending Changes", pending_value)
-        d3.metric("Legacy DVC Repro", str(repro.get("status", "idle")).title())
-
-        if dvc_state == "busy":
-            st.info(dvc.get("summary", "DVC is busy right now"))
-        elif dvc_state == "unavailable":
-            st.warning(dvc.get("summary", "DVC status is temporarily unavailable"))
-        elif dvc.get("clean"):
-            st.success(dvc.get("summary", "Pipeline is up to date"))
-        else:
-            st.warning(dvc.get("summary", "DVC changes are pending"))
-
-        if dvc.get("source") == "cache":
-            st.info(
-                f"Showing the last successful DVC status from {dvc.get('checked_at') or 'an earlier check'} "
-                f"because the live check failed: {dvc.get('live_error') or 'unknown reason'}"
-            )
-        elif dvc.get("checked_at"):
-            st.caption(f"Checked at: {dvc.get('checked_at')}")
-
-        if dvc.get("entries"):
-            st.dataframe(pd.DataFrame(dvc["entries"]), use_container_width=True)
-
-        with st.expander("Raw DVC Status"):
-            st.code(dvc.get("raw_output", "No output"), language="bash")
-
-    except Exception as exc:
-        st.error(f"Could not fetch DVC status: {exc}")
 
 # ── EXPERIMENTS ────────────────────────
 elif page == "Experiments":

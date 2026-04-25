@@ -42,6 +42,7 @@ import torch
 import mlflow
 import mlflow.pytorch
 from mlflow.tracking import MlflowClient
+from mlflow_utils import configure_mlflow
 
 
 # ---------------- LOGGING ---------------- #
@@ -751,17 +752,18 @@ class_names = train_dataset.classes
 
 # ---------------- LOAD MODEL FROM MLFLOW ---------------- #
 
-MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
 MODEL_URI = os.environ.get("MODEL_URI", "models:/MalariaClassifier/Production")
 MODEL_REFRESH_INTERVAL_SECONDS = int(os.environ.get("MODEL_REFRESH_INTERVAL_SECONDS", "60"))
+LOCAL_MODEL_PATH = Path("models") / f"{params['train']['model']}.pth"
 
-mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+MLFLOW_TRACKING_URI = configure_mlflow()
 
 logger.info("Loading model from MLflow Production...")
 logger.info(f"Using MLflow tracking URI: {MLFLOW_TRACKING_URI}")
 
 client = MlflowClient()
 model = None
+model_source = None
 latest_versions = []
 run_id = None
 version = None
@@ -771,6 +773,35 @@ acc = None
 model_last_refresh_at = None
 _last_model_refresh_check = 0.0
 _model_lock = threading.RLock()
+
+
+def load_local_pipeline_checkpoint(force=False):
+    global model, model_source, latest_versions, run_id, version, run_name, f1, acc, model_last_refresh_at
+
+    if not LOCAL_MODEL_PATH.exists():
+        logger.warning(f"No local DVC checkpoint found at {LOCAL_MODEL_PATH}")
+        return False
+
+    if not force and model is not None and model_source == "local_dvc_checkpoint":
+        model_last_refresh_at = datetime.now(timezone.utc).isoformat()
+        return False
+
+    local_model = models.get_model(params["train"]["model"], params)
+    local_model.load_state_dict(torch.load(LOCAL_MODEL_PATH, map_location="cpu"))
+    local_model.eval()
+
+    model = local_model
+    model_source = "local_dvc_checkpoint"
+    latest_versions = []
+    run_id = None
+    version = None
+    run_name = "local_dvc_checkpoint"
+    f1 = None
+    acc = None
+    model_last_refresh_at = datetime.now(timezone.utc).isoformat()
+
+    logger.info(f"Serving local DVC checkpoint from {LOCAL_MODEL_PATH}")
+    return True
 
 
 def fetch_latest_production_model():
@@ -797,7 +828,7 @@ def fetch_latest_production_model():
 
 
 def refresh_model_if_needed(force=False):
-    global model, latest_versions, run_id, version, run_name, f1, acc
+    global model, model_source, latest_versions, run_id, version, run_name, f1, acc
     global model_last_refresh_at, _last_model_refresh_check
 
     now = time.time()
@@ -814,7 +845,7 @@ def refresh_model_if_needed(force=False):
             metadata, latest = fetch_latest_production_model()
             if metadata is None:
                 logger.warning("No Production model found in MLflow.")
-                return False
+                return load_local_pipeline_checkpoint(force=force)
 
             current_version = str(version) if version is not None else None
             latest_version = str(metadata["version"])
@@ -824,6 +855,7 @@ def refresh_model_if_needed(force=False):
                 loaded_model.eval()
 
                 model = loaded_model
+                model_source = "mlflow_production"
                 latest_versions = metadata["latest_versions"]
                 run_id = metadata["run_id"]
                 version = metadata["version"]
@@ -881,6 +913,7 @@ def get_model_sync_status(force_refresh=False):
         "latest_production_version": latest_production_version,
         "latest_production_run_id": latest_production_run_id,
         "model_loaded": model is not None,
+        "model_source": model_source,
         "stale": stale,
         "refreshed": refreshed,
         "last_refresh_at": model_last_refresh_at,
@@ -1581,11 +1614,23 @@ def model_info():
                 model_version.set(int(version))
             return {
                 "model_name": "MalariaClassifier",
+                "model_source": model_source,
                 "version": version,
                 "run_id": run_id,
                 "run_name": run_name,
                 "f1_score": f1,
                 "accuracy": acc
+            }
+
+        if model is not None:
+            return {
+                "model_name": "MalariaClassifier",
+                "model_source": model_source,
+                "version": None,
+                "run_id": None,
+                "run_name": run_name,
+                "f1_score": None,
+                "accuracy": None,
             }
 
         return {"message": "No production model available"}

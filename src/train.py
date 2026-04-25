@@ -12,12 +12,7 @@ import mlflow
 
 from mlflow_utils import configure_mlflow, log_reproducibility_tags
 
-configure_mlflow(
-    os.environ.get(
-        "MLFLOW_TRACKING_URI",
-        "http://localhost:5000",
-    )
-)
+configure_mlflow()
 mlflow.set_experiment("Malaria")
 
 def load_params():

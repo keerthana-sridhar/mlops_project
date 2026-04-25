@@ -16,7 +16,7 @@ CANDIDATE_CHECKPOINT = "finetune/candidate_checkpoint.pth"
 RUN_ID_FILE = "finetune/run_id.txt"
 DATA_DIR = "data/processed/incremental_resized"
 
-configure_mlflow(os.environ.get("MLFLOW_TRACKING_URI", "http://malaria-mlflow:5000"))
+configure_mlflow()
 mlflow.set_experiment("Malaria_Finetune")  # ← separate experiment name
 
 def load_params():

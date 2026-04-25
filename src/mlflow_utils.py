@@ -5,11 +5,17 @@ from pathlib import Path
 import mlflow
 
 
-DEFAULT_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
+DEFAULT_TRACKING_URI = "http://localhost:5000"
+
+
+def resolve_tracking_uri():
+    return os.environ.get("MLFLOW_TRACKING_URI", DEFAULT_TRACKING_URI)
 
 
 def configure_mlflow(tracking_uri=None):
-    mlflow.set_tracking_uri(tracking_uri or DEFAULT_TRACKING_URI)
+    resolved_uri = tracking_uri or resolve_tracking_uri()
+    mlflow.set_tracking_uri(resolved_uri)
+    return resolved_uri
 
 
 def _safe_git_output(args):

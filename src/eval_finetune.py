@@ -8,8 +8,6 @@ from torch.utils.data import DataLoader
 from models import get_model
 from mlflow_utils import configure_mlflow, log_reproducibility_tags
 
-MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
-
 
 def load_params():
     with open("params.yaml") as f:
@@ -27,7 +25,7 @@ DATA_DIR = "data/processed/resized/val"
 OUTPUT = "reports_finetune/eval_finetune.json"
 THRESHOLD = 0.75
 
-configure_mlflow(MLFLOW_TRACKING_URI)
+configure_mlflow()
 
 transform = transforms.Compose([
     transforms.Resize((224, 224)),

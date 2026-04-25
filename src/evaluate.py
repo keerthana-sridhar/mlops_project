@@ -22,12 +22,7 @@ from mlflow_utils import configure_mlflow, log_reproducibility_tags
 
 
 # ---------------- MLFLOW SETUP ---------------- #
-configure_mlflow(
-    os.environ.get(
-        "MLFLOW_TRACKING_URI",
-        "http://localhost:5000",
-    )
-)
+configure_mlflow()
 mlflow.set_experiment("Malaria")
 
 # ---------------- UTILS ---------------- #

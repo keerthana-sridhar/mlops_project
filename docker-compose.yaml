@@ -66,7 +66,7 @@ x-airflow-common:
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
     AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET:-airflow_jwt_secret}
     AIRFLOW__API_AUTH__JWT_ISSUER: ${AIRFLOW__API_AUTH__JWT_ISSUER:-airflow}
-    MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow:5000}
+    MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://malaria-mlflow:5000}
     AIRFLOW__CORE__TASK_RUNNER_TERMINATION_TIMEOUT: 7200
     AIRFLOW__CELERY__OPERATION_TIMEOUT: 7200
 
@@ -131,7 +131,7 @@ services:
         condition: service_healthy
 
     environment:
-      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow:5000}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://malaria-mlflow:5000}
       MODEL_URI: models:/MalariaClassifier/Production
 
       AIRFLOW_API_BASE: http://airflow-apiserver:8080/api/v2
@@ -151,7 +151,7 @@ services:
     volumes:
       - .:/opt/project
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/', timeout=5)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/', timeout=5)"]
       interval: 20s
       timeout: 10s
       retries: 5
