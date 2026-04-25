@@ -1,8 +1,12 @@
+import os
+
 import mlflow
 from mlflow.tracking import MlflowClient
 from datetime import datetime
 
-mlflow.set_tracking_uri("sqlite:///mlflow.db")
+mlflow.set_tracking_uri(
+    os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
+)
 
 client = MlflowClient()
 

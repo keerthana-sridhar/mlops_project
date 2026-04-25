@@ -29,7 +29,7 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "thresholds"
           },
           "custom": {
             "axisBorderShow": false,
@@ -62,7 +62,7 @@
               "mode": "none"
             },
             "thresholdsStyle": {
-              "mode": "off"
+              "mode": "line"
             }
           },
           "mappings": [],
@@ -170,7 +170,7 @@
               },
               {
                 "color": "semi-dark-green",
-                "value": 60
+                "value": 0.7
               }
             ]
           }
@@ -219,7 +219,7 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "thresholds"
           },
           "custom": {
             "axisBorderShow": false,
@@ -252,7 +252,7 @@
               "mode": "none"
             },
             "thresholdsStyle": {
-              "mode": "off"
+              "mode": "line"
             }
           },
           "mappings": [],
@@ -454,7 +454,7 @@
               },
               {
                 "color": "red",
-                "value": 20
+                "value": 0.2
               }
             ]
           }
@@ -499,13 +499,25 @@
         "type": "prometheus",
         "uid": "affok84so9m2oe"
       },
-      "description": "leads to drift",
+      "description": "Backend-computed drift flag based on confidence, OOD rate, and input-shift thresholds.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "Stable"
+                },
+                "1": {
+                  "text": "Drift detected"
+                }
+              },
+              "type": "value"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -515,7 +527,7 @@
               },
               {
                 "color": "red",
-                "value": 1
+                "value": 0.5
               }
             ]
           }
@@ -550,13 +562,13 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "\n  (low_confidence_rate >  0.4)\n",
+          "expr": "drift_detected",
           "legendFormat": "__auto",
           "range": true,
           "refId": "Drift Status"
         }
       ],
-      "title": "Drift Status (low confidence rate0",
+      "title": "Drift Status",
       "type": "stat"
     }
   ],

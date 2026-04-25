@@ -35,9 +35,10 @@ mlruns/
 reports_finetune/
 finetune/run_id.txt
 finetune/production_model.pth
+finetune/checkpoint.pth
+finetune/candidate_checkpoint.pth
 finetune/.gitignore
 src/dvc_snapshot.sh  
 
 logs/
-
-docs/
+shared/mlflow/

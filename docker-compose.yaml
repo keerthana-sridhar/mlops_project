@@ -66,7 +66,7 @@ x-airflow-common:
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
     AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET:-airflow_jwt_secret}
     AIRFLOW__API_AUTH__JWT_ISSUER: ${AIRFLOW__API_AUTH__JWT_ISSUER:-airflow}
-    MLFLOW_TRACKING_URI: sqlite:////opt/project/mlflow.db
+    MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow:5000}
     AIRFLOW__CORE__TASK_RUNNER_TERMINATION_TIMEOUT: 7200
     AIRFLOW__CELERY__OPERATION_TIMEOUT: 7200
 
@@ -94,6 +94,8 @@ x-airflow-common:
     redis:
       condition: service_healthy
     postgres:
+      condition: service_healthy
+    mlflow:
       condition: service_healthy
 
 services:
@@ -125,15 +127,35 @@ services:
     depends_on:
       airflow-apiserver:
         condition: service_healthy
+      mlflow:
+        condition: service_healthy
 
     environment:
-      MLFLOW_TRACKING_URI: sqlite:////opt/project/mlflow.db
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow:5000}
       MODEL_URI: models:/MalariaClassifier/Production
 
       AIRFLOW_API_BASE: http://airflow-apiserver:8080/api/v2
       AIRFLOW_API_USERNAME: airflow
       AIRFLOW_API_PASSWORD: airflow
       AIRFLOW_DAG_ID: malaria_retraining_v2
+    restart: unless-stopped
+
+  mlflow:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: malaria-mlflow
+    command: ["/bin/sh", "/opt/project/docker/mlflow-entrypoint.sh"]
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/opt/project
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/', timeout=5)"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
 
   frontend:
@@ -168,6 +190,8 @@ services:
       context: .
       dockerfile: docker/alertmanager.Dockerfile
     container_name: malaria-alertmanager
+    env_file:
+      - ${ENV_FILE_PATH:-.env}
     depends_on:
       - backend
     ports:

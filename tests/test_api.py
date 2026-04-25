@@ -103,9 +103,9 @@ def test_pipeline_status_structured(monkeypatch):
     class CompletedProcess:
         returncode = 1
         stdout = ""
-        stderr = """finetune/checkpoint.pth.dvc:
-\tchanged outs:
-\t\tmodified:           finetune/checkpoint.pth
+        stderr = """dvc.yaml:
+\tchanged deps:
+\t\tmodified:           params.yaml
 """
 
     monkeypatch.setattr(app_module.subprocess, "run", lambda *a, **k: CompletedProcess())
@@ -129,7 +129,19 @@ def test_pipeline_status_structured(monkeypatch):
 
     payload = response.json()
     assert payload["dvc"]["clean"] is False
-    assert payload["dvc"]["entries"][0]["target"] == "finetune/checkpoint.pth.dvc"
+    assert payload["dvc"]["entries"][0]["target"] == "dvc.yaml"
+
+
+def test_log_invalid_increments_counter():
+    before = app_module._global_counts["invalid"]
+
+    response = client.post(
+        "/log_invalid",
+        json={"filename": "bad.png", "reason": "empty_file"},
+    )
+
+    assert response.status_code == 200
+    assert app_module._global_counts["invalid"] == before + 1
 
 
 # -------------------------------

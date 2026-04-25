@@ -6,8 +6,9 @@ import mlflow
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from models import get_model
+from mlflow_utils import configure_mlflow, log_reproducibility_tags
 
-MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
 
 
 def load_params():
@@ -26,7 +27,7 @@ DATA_DIR = "data/processed/resized/val"
 OUTPUT = "reports_finetune/eval_finetune.json"
 THRESHOLD = 0.75
 
-mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+configure_mlflow(MLFLOW_TRACKING_URI)
 
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -82,6 +83,7 @@ if os.path.exists(RUN_ID_FILE):
 
 if run_id:
     with mlflow.start_run(run_id=run_id):
+        log_reproducibility_tags({"pipeline_role": "airflow_finetune_evaluate"})
         mlflow.log_metric("finetune_validation_accuracy", acc)
         mlflow.log_metric("promotion_threshold", THRESHOLD)
         mlflow.log_artifact(OUTPUT, artifact_path="evaluation")

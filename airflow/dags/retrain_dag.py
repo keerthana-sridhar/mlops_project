@@ -55,18 +55,4 @@ with DAG(
         bash_command=f"cd {PROJECT_PATH} && {PYTHON_CMD} src/promote_model.py",
     )
 
-    snapshot = BashOperator(
-    task_id="dvc_snapshot",
-    bash_command="""
-        cd /opt/project &&
-        rm -f .dvc/tmp/lock &&
-        test -f finetune/checkpoint.pth &&
-        dvc add finetune/checkpoint.pth &&
-        dvc add data/processed/incremental_resized &&
-        (dvc push || echo "DVC push skipped")
-    """,
-)
-
- 
-
-    check >> process >> finetune >> evaluate >> promote >>  snapshot
+    check >> process >> finetune >> evaluate >> promote

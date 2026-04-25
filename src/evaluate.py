@@ -18,14 +18,14 @@ from sklearn.metrics import (
     classification_report,
 )
 from models import get_model
+from mlflow_utils import configure_mlflow, log_reproducibility_tags
 
 
 # ---------------- MLFLOW SETUP ---------------- #
-#mlflow.set_tracking_uri("sqlite:///mlflow.db")
-mlflow.set_tracking_uri(
+configure_mlflow(
     os.environ.get(
-        "MLFLOW_TRACKING_URI", 
-        "sqlite:///mlflow.db"   # relative = local project dir, works on terminal
+        "MLFLOW_TRACKING_URI",
+        "http://localhost:5000",
     )
 )
 mlflow.set_experiment("Malaria")
@@ -156,6 +156,7 @@ def main():
     # ---------------- MLFLOW LOGGING ---------------- #
 
     with mlflow.start_run(run_name="evaluation"):
+        log_reproducibility_tags({"pipeline_role": "evaluate"})
 
         mlflow.log_metrics({
             "eval_accuracy": metrics["accuracy"],

@@ -145,8 +145,8 @@ stages:
       size: 1237
     - path: src/train.py
       hash: md5
-      md5: 6585b51912eac6197ad0ba99c19bc741
-      size: 5388
+      md5: 55c9c038e7d07cb425374c405918ec0d
+      size: 5345
     params:
       params.yaml:
         model:
@@ -161,18 +161,18 @@ stages:
         train:
           batch_size: 16
           epochs: 1
-          lr: 0.002
+          lr: 0.0003
           model: cnn
     outs:
     - path: models
       hash: md5
-      md5: cc7c86235c261299e775850b7fd0e8dc.dir
+      md5: d68227615abdbc70508208fc4a53e9fe.dir
       size: 47800853
       nfiles: 1
     - path: reports/metrics/train_metrics.json
       hash: md5
-      md5: 2bf3c5753c68181e48b6f1d1a49adf10
-      size: 346
+      md5: 617f057a24006c0fc9255b8121796b88
+      size: 344
   evaluate:
     cmd: python src/evaluate.py
     deps:
@@ -183,13 +183,13 @@ stages:
       nfiles: 27430
     - path: models
       hash: md5
-      md5: cc7c86235c261299e775850b7fd0e8dc.dir
+      md5: d68227615abdbc70508208fc4a53e9fe.dir
       size: 47800853
       nfiles: 1
     - path: src/evaluate.py
       hash: md5
-      md5: f19df74340e1a2eff0b2458bc333b53c
-      size: 4929
+      md5: 6797103a503ed7449fcde73152c29b47
+      size: 4957
     - path: src/models.py
       hash: md5
       md5: 0e16504f9d8c0d4f022787d1a1f59ad4
@@ -208,28 +208,28 @@ stages:
         train:
           batch_size: 16
           epochs: 1
-          lr: 0.002
+          lr: 0.0003
           model: cnn
     outs:
     - path: reports/metrics/eval_metrics.json
       hash: md5
-      md5: b7156c159bee8c3a4f4909c2b75d5795
+      md5: 5ef8b40e8cf2e77b0a70ffbaee300fce
       size: 139
     - path: reports/plots/confusion_matrix.csv
       hash: md5
-      md5: 5b101bbc23631a827be903608a6ebbed
-      size: 32
+      md5: 2ce83fa3f8458491fe0a3286f953d33a
+      size: 33
     - path: reports/plots/eval_metrics_plots.json
       hash: md5
-      md5: 59f3336d50666b736d125809fc5a375d
+      md5: 2c2c26403a7bb9265bb7ddff12c090d5
       size: 311
     - path: reports/plots/per_class_f1.json
       hash: md5
-      md5: 50f1d7779d23d6a50a0a1544766de3f0
+      md5: 24e91f22c76687a2c0df802caab40515
       size: 150
     - path: reports/plots/scatter_metrics.json
       hash: md5
-      md5: 08854ba686b432f04823f53544f1f079
+      md5: b2241f62ab8690bd1332073929421288
       size: 88
   merge_feedback:
     cmd: python src/merge_feedback.py

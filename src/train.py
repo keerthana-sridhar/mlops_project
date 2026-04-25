@@ -10,15 +10,12 @@ from sklearn.metrics import precision_score, recall_score, f1_score
 from models import get_model
 import mlflow
 
-import mlflow
-import os
+from mlflow_utils import configure_mlflow, log_reproducibility_tags
 
-# Option 1: Use MLflow server (recommended)
-#mlflow.set_tracking_uri("sqlite:///mlflow.db")
-mlflow.set_tracking_uri(
+configure_mlflow(
     os.environ.get(
-        "MLFLOW_TRACKING_URI", 
-        "sqlite:///mlflow.db"   # relative = local project dir, works on terminal
+        "MLFLOW_TRACKING_URI",
+        "http://localhost:5000",
     )
 )
 mlflow.set_experiment("Malaria")
@@ -118,6 +115,7 @@ def main():
 
     # 🔥 START MLFLOW RUN
     with mlflow.start_run():
+        log_reproducibility_tags({"pipeline_role": "train"})
 
         # ✅ Log parameters
         mlflow.log_params({

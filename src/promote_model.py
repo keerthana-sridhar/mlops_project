@@ -7,7 +7,7 @@ from mlflow.tracking import MlflowClient
 from datetime import datetime
 
 mlflow.set_tracking_uri(
-    os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")
+    os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
 )
 
 MODEL_NAME = "MalariaClassifier"
@@ -68,4 +68,4 @@ if os.path.exists(RUN_ID_FILE):
 print(f"✅ Promoted version {version} to Production", flush=True)
 print(f"   Accuracy: {acc}", flush=True)
 print(f"   Run ID: {run_id}", flush=True)
-print("📦 Production checkpoint updated for DVC snapshot", flush=True)
+print("📦 Production checkpoint updated for serving and future warm-start finetuning", flush=True)

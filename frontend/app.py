@@ -157,7 +157,7 @@ if page == "User Guide":
     ### Retraining Workflow
 
     - Use the **Pipeline** page to trigger retraining through **Airflow**.
-    - The UI shows the latest Airflow DAG run, task-by-task progress, and the current **DVC snapshot status**.
+    - The UI shows the latest Airflow DAG run, task-by-task progress, and the current **DVC reproducibility status**.
     - When a newer MLflow Production model is available, the backend refreshes the serving model automatically.
 
     ### Running The Full Reproducible DVC Pipeline In Docker
@@ -225,6 +225,17 @@ elif page == "Home":
     seen_upload_hashes = set()
 
     # -------- PROCESS INPUTS -------- #
+
+    def report_invalid_input(filename, reason):
+        failed_files.append({"filename": filename, "reason": reason})
+        try:
+            requests.post(
+                f"{BACKEND_URL}/log_invalid",
+                json={"filename": filename, "reason": reason},
+                timeout=5,
+            )
+        except Exception:
+            pass
     
     def process_file(file, name_override=None):
         filename = name_override or file.name
@@ -232,11 +243,11 @@ elif page == "Home":
         try:
             file_bytes = file.getvalue()
             if not file_bytes:
-                failed_files.append({"filename": filename, "reason": "empty_file"})
+                report_invalid_input(filename, "empty_file")
                 return
 
             if len(file_bytes) > MAX_SIZE_MB * 1024 * 1024:
-                failed_files.append({"filename": filename, "reason": "file_too_large"})
+                report_invalid_input(filename, "file_too_large")
                 return
 
             file_hash = hashlib.sha256(file_bytes).hexdigest()
@@ -256,7 +267,7 @@ elif page == "Home":
                 image = None
 
         except Exception:
-            failed_files.append({"filename": filename, "reason": "read_failed"})
+            report_invalid_input(filename, "read_failed")
             return
 
         valid_files.append((filename, file_bytes, image, image is not None))
@@ -443,7 +454,7 @@ elif page == "Pipeline":
     st.subheader("📌 Pipeline Architecture")
     st.image("frontend/assets/pipeline.png")
 
-    st.caption("Airflow orchestrates retraining, while DVC shows whether the tracked snapshot is aligned with the latest accepted model artifacts.")
+    st.caption("Airflow orchestrates feedback retraining, while DVC reports the reproducible CI pipeline state for tracked code, data, and reports.")
 
     st.subheader("🔁 DVC Pipeline DAG")
     st.image("frontend/assets/dvc_dag.png")
@@ -547,6 +558,11 @@ elif page == "Pipeline":
                 st.success("Latest Airflow retraining run completed successfully.")
             elif latest_state in {"failed", "error"}:
                 st.error("Latest Airflow retraining run failed.")
+                if retraining.get("failed_task_id") or retraining.get("failure_reason"):
+                    st.caption(
+                        f"Failed task: {retraining.get('failed_task_id') or '-'} | "
+                        f"Reason: {retraining.get('failure_reason') or 'No reason available'}"
+                    )
             elif latest_state:
                 st.info(f"Latest Airflow retraining run is `{latest_state}`.")
 
@@ -563,23 +579,45 @@ elif page == "Pipeline":
     except Exception as exc:
         st.error(f"Could not fetch Airflow retraining status: {exc}")
 
-    st.subheader("🗂️ DVC Snapshot Status")
+    st.subheader("🗂️ DVC Reproducibility Status")
     try:
         res = requests.get(f"{BACKEND_URL}/pipeline/status", timeout=30)
         res.raise_for_status()
         data = res.json()
         dvc = data.get("dvc", {})
         repro = data.get("repro_status", {})
+        dvc_state = dvc.get("status")
+        if dvc_state == "up_to_date":
+            dvc_label = "Up to date"
+        elif dvc_state == "busy":
+            dvc_label = "Busy"
+        elif dvc_state == "unavailable":
+            dvc_label = "Unavailable"
+        else:
+            dvc_label = "Needs attention"
+        pending_value = "-" if dvc_state in {"busy", "unavailable"} else len(dvc.get("entries", []))
 
         d1, d2, d3 = st.columns(3)
-        d1.metric("DVC Status", "Up to date" if dvc.get("clean") else "Needs snapshot")
-        d2.metric("Pending Changes", len(dvc.get("entries", [])))
+        d1.metric("DVC Status", dvc_label)
+        d2.metric("Pending Changes", pending_value)
         d3.metric("Legacy DVC Repro", str(repro.get("status", "idle")).title())
 
-        if dvc.get("clean"):
+        if dvc_state == "busy":
+            st.info(dvc.get("summary", "DVC is busy right now"))
+        elif dvc_state == "unavailable":
+            st.warning(dvc.get("summary", "DVC status is temporarily unavailable"))
+        elif dvc.get("clean"):
             st.success(dvc.get("summary", "Pipeline is up to date"))
         else:
             st.warning(dvc.get("summary", "DVC changes are pending"))
+
+        if dvc.get("source") == "cache":
+            st.info(
+                f"Showing the last successful DVC status from {dvc.get('checked_at') or 'an earlier check'} "
+                f"because the live check failed: {dvc.get('live_error') or 'unknown reason'}"
+            )
+        elif dvc.get("checked_at"):
+            st.caption(f"Checked at: {dvc.get('checked_at')}")
 
         if dvc.get("entries"):
             st.dataframe(pd.DataFrame(dvc["entries"]), use_container_width=True)

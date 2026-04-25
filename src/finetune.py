@@ -8,6 +8,7 @@ import mlflow.pytorch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from models import get_model
+from mlflow_utils import configure_mlflow, log_reproducibility_tags
 
 DEVICE = "cpu"
 PRODUCTION_CHECKPOINT = "finetune/checkpoint.pth"
@@ -15,9 +16,7 @@ CANDIDATE_CHECKPOINT = "finetune/candidate_checkpoint.pth"
 RUN_ID_FILE = "finetune/run_id.txt"
 DATA_DIR = "data/processed/incremental_resized"
 
-mlflow.set_tracking_uri(
-    os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")
-)
+configure_mlflow(os.environ.get("MLFLOW_TRACKING_URI", "http://malaria-mlflow:5000"))
 mlflow.set_experiment("Malaria_Finetune")  # ← separate experiment name
 
 def load_params():
@@ -65,6 +64,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 run_name = f"finetune_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
 with mlflow.start_run(run_name=run_name):
+    log_reproducibility_tags({"pipeline_role": "airflow_finetune"})
     mlflow.log_params({
         "model": model_name,
         "type": "finetune",

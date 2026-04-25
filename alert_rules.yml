@@ -3,13 +3,22 @@ groups:
     rules:
 
       - alert: DriftDetected
-        expr: low_confidence_rate > 0.4 or ood_rate > 0.1
+        expr: drift_detected > 0.5
         for: 10s
         labels:
           severity: warning
         annotations:
           summary: "Data drift detected"
-          description: "Model performance degrading or inputs shifting."
+          description: "Combined drift signal crossed the configured backend threshold."
+
+      - alert: HighOODRate
+        expr: ood_rate > 0.2
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "OOD rate above 20%"
+          description: "Too many incoming samples are falling outside the training distribution."
 
       - alert: HighErrorRate
         expr: rate(http_requests_total{status="500"}[5m]) 
@@ -29,10 +38,10 @@ groups:
           severity: warning
       - alert: HighInvalidInputRate
         expr: rate(invalid_image_uploads_total[5m]) 
-              / rate(http_requests_total{endpoint="/predict"}[5m]) > 0.3
+              / rate(http_requests_total{endpoint="/predict"}[5m]) > 0.4
         for: 30s
         labels:
           severity: warning
         annotations:
           summary: "High invalid input rate"
-          description: "More than 30% of incoming requests are invalid inputs."
+          description: "More than 40% of incoming requests are invalid inputs."

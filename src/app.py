@@ -174,9 +174,11 @@ if not os.path.exists(METRICS_FILE):
             "conf_sum": 0.0
         }, f)
 '''
-CONF_THRESHOLD = 0.6
-DRIFT_THRESHOLD = 0.15
-OOD_RATE_THRESHOLD = 0.1
+CONF_THRESHOLD = float(os.environ.get("CONF_THRESHOLD", "0.6"))
+DRIFT_THRESHOLD = float(os.environ.get("DRIFT_THRESHOLD", "0.5"))
+OOD_RATE_THRESHOLD = float(os.environ.get("OOD_RATE_THRESHOLD", "0.2"))
+INPUT_MEAN_DRIFT_THRESHOLD = float(os.environ.get("INPUT_MEAN_DRIFT_THRESHOLD", "0.2"))
+DVC_STATUS_TIMEOUT_SECONDS = float(os.environ.get("DVC_STATUS_TIMEOUT_SECONDS", "6"))
 
 _runtime_counts = {
     "total": 0,
@@ -190,6 +192,10 @@ _global_counts = {
 _confidence_stats = {
     "sum": 0.0,
     "count": 0
+}
+_dvc_status_cache = {
+    "payload": None,
+    "checked_at": None,
 }
 
 def update_runtime_counts(confidence, is_ood=False):
@@ -356,13 +362,33 @@ def summarize_dag_run(run):
     }
 
 
-def fetch_retraining_status(limit=5):
+def parse_airflow_datetime(value):
+    if not value:
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+
+def dag_run_sort_key(run):
+    return (
+        parse_airflow_datetime(run.get("start_date")),
+        parse_airflow_datetime(run.get("logical_date")),
+        parse_airflow_datetime(run.get("end_date")),
+        str(run.get("dag_run_id") or ""),
+    )
+
+
+def fetch_retraining_status(limit=20):
     payload, base = airflow_request(
         "GET",
         f"/dags/{AIRFLOW_DAG_ID}/dagRuns?limit={limit}&order_by=start_date&sort_direction=desc",
     )
 
     runs = [summarize_dag_run(run) for run in extract_collection(payload, "dag_runs", "dagRuns")]
+    runs.sort(key=dag_run_sort_key, reverse=True)
     latest = runs[0] if runs else None
     tasks = []
 
@@ -385,6 +411,19 @@ def fetch_retraining_status(limit=5):
         except Exception as exc:
             logger.warning(f"Could not fetch Airflow task instances: {exc}")
 
+    failure_reason = None
+    failed_task_id = None
+    for task in tasks:
+        if str(task.get("state", "")).lower() in {"failed", "error", "upstream_failed"}:
+            task["failure_reason"] = extract_task_failure_reason(
+                dag_id=AIRFLOW_DAG_ID,
+                dag_run_id=latest.get("dag_run_id") if latest else None,
+                task_id=task.get("task_id"),
+            )
+            if failure_reason is None:
+                failure_reason = task["failure_reason"]
+                failed_task_id = task.get("task_id")
+
     return {
         "dag_id": AIRFLOW_DAG_ID,
         "api_available": True,
@@ -392,6 +431,8 @@ def fetch_retraining_status(limit=5):
         "latest_run": latest,
         "recent_runs": runs,
         "task_instances": tasks,
+        "failed_task_id": failed_task_id,
+        "failure_reason": failure_reason,
     }
 
 
@@ -399,6 +440,24 @@ def summarize_dvc_status_output(output):
     text = str(output or "").strip()
     if not text:
         text = "Pipeline is up to date."
+
+    if "Unable to acquire lock" in text:
+        return {
+            "status": "busy",
+            "summary": "DVC is busy right now. Retry in a few seconds.",
+            "clean": None,
+            "entries": [],
+            "raw_output": text,
+        }
+
+    if text.upper().startswith("ERROR:"):
+        return {
+            "status": "unavailable",
+            "summary": "DVC status is temporarily unavailable.",
+            "clean": None,
+            "entries": [],
+            "raw_output": text,
+        }
 
     if "up to date" in text.lower():
         return {
@@ -450,11 +509,102 @@ def summarize_dvc_status_output(output):
     }
 
 
+def stamp_dvc_status(payload, source="live", stale=False, live_error=None):
+    checked_at = datetime.now(timezone.utc).isoformat()
+    enriched = {
+        **payload,
+        "source": source,
+        "stale": stale,
+        "checked_at": checked_at,
+        "live_error": live_error,
+    }
+
+    if source == "live" and payload.get("status") not in {"busy", "unavailable"}:
+        _dvc_status_cache["payload"] = enriched
+        _dvc_status_cache["checked_at"] = checked_at
+
+    return enriched
+
+
+def fallback_dvc_status(reason):
+    cached = _dvc_status_cache.get("payload")
+    if cached:
+        return {
+            **cached,
+            "source": "cache",
+            "stale": True,
+            "live_error": reason,
+        }
+
+    return {
+        "status": "unavailable",
+        "summary": "DVC status is temporarily unavailable.",
+        "clean": None,
+        "entries": [],
+        "raw_output": reason,
+        "source": "fallback",
+        "stale": True,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "live_error": reason,
+    }
+
+
 def count_feedback_files(path):
     path = Path(path)
     if not path.exists():
         return 0
     return sum(1 for item in path.rglob("*") if item.is_file())
+
+
+def extract_task_failure_reason(dag_id, dag_run_id, task_id):
+    if not dag_run_id or not task_id:
+        return None
+
+    log_root = Path("logs") / f"dag_id={dag_id}" / f"run_id={dag_run_id}" / f"task_id={task_id}"
+    attempts = sorted(log_root.glob("attempt=*.log"))
+    if not attempts:
+        return None
+
+    lines = attempts[-1].read_text(errors="ignore").splitlines()
+    skip_fragments = (
+        "DAG bundles loaded",
+        "Filling up the DagBag",
+        "Tmp dir root location",
+        "Running command:",
+        "Output:",
+        "Command exited with return code",
+        "Pushing xcom",
+    )
+
+    generic_fallback = None
+
+    for raw_line in reversed(lines):
+        message = raw_line.strip()
+        if not message:
+            continue
+
+        if raw_line.lstrip().startswith("{"):
+            try:
+                payload = json.loads(raw_line)
+                if payload.get("event") == "Task failed with exception":
+                    details = payload.get("error_detail") or []
+                    if details and details[0].get("exc_value"):
+                        generic_fallback = details[0]["exc_value"]
+                    continue
+                message = str(payload.get("event") or "").strip()
+            except Exception:
+                message = raw_line.strip()
+
+        if not message or any(fragment in message for fragment in skip_fragments):
+            continue
+
+        if message.startswith("❌") or message.startswith("ERROR") or "below threshold" in message.lower():
+            return message
+
+        if generic_fallback is None:
+            generic_fallback = message
+
+    return generic_fallback
 
 
 def normalize_label_folder(name):
@@ -601,7 +751,7 @@ class_names = train_dataset.classes
 
 # ---------------- LOAD MODEL FROM MLFLOW ---------------- #
 
-MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
 MODEL_URI = os.environ.get("MODEL_URI", "models:/MalariaClassifier/Production")
 MODEL_REFRESH_INTERVAL_SECONDS = int(os.environ.get("MODEL_REFRESH_INTERVAL_SECONDS", "60"))
 
@@ -747,6 +897,26 @@ def latest_run_promoted_successfully(status_payload):
             return True
 
     return False
+
+
+def run_dvc_status(attempts=3, delay_seconds=0.5):
+    last_result = None
+    for attempt in range(attempts):
+        result = subprocess.run(
+            ["dvc", "status"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=DVC_STATUS_TIMEOUT_SECONDS,
+        )
+        output = (result.stdout + "\n" + result.stderr).strip()
+        last_result = (result, output)
+        if "Unable to acquire lock" not in output:
+            return last_result
+        if attempt < attempts - 1:
+            time.sleep(delay_seconds)
+
+    return last_result
 
 
 refresh_model_if_needed(force=True)
@@ -1095,7 +1265,7 @@ async def predict(file: UploadFile = File(...)):
             pass'''
 
         # -------- DRIFT (COMBINED SIGNAL) -------- #
-        if delta > 0.15 or low_conf_rate > DRIFT_THRESHOLD or ood_rate > OOD_RATE_THRESHOLD:
+        if delta > INPUT_MEAN_DRIFT_THRESHOLD or low_conf_rate > DRIFT_THRESHOLD or ood_rate > OOD_RATE_THRESHOLD:
             drift_detected.set(1)
         else:
             drift_detected.set(0)
@@ -1372,19 +1542,22 @@ def refresh_serving_model():
 @app.get("/pipeline/status")
 def pipeline_status():
     try:
-        result = subprocess.run(
-            ["dvc", "status"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
+        result, output = run_dvc_status()
         output = (result.stdout + "\n" + result.stderr).strip()
-        dvc_status = summarize_dvc_status_output(output)
+        dvc_status = stamp_dvc_status(summarize_dvc_status_output(output))
+    except subprocess.TimeoutExpired:
+        dvc_status = fallback_dvc_status(
+            f"DVC status timed out after {DVC_STATUS_TIMEOUT_SECONDS:.0f} seconds."
+        )
+        result = None
+    except Exception as exc:
+        dvc_status = fallback_dvc_status(f"DVC status check failed: {exc}")
+        result = None
 
+    try:
         return {
             "dvc": dvc_status,
-            "return_code": result.returncode,
+            "return_code": result.returncode if result is not None else None,
             "repro_command": "docker compose exec backend dvc repro",
             "repro_status": get_dvc_repro_status(),
             "model_sync": get_model_sync_status(),
@@ -1447,10 +1620,11 @@ def get_alerts():
 @app.post("/log_invalid")
 def log_invalid(data: dict):
     log_failure({
-        "filename": data["filename"],
+        "filename": data.get("filename", "unknown"),
         "type": "invalid_input",
-        "reason": data["reason"],
+        "reason": data.get("reason", "unknown"),
         "timestamp": time.time()
     })
     invalid_image_uploads_total.inc()
+    _global_counts["invalid"] += 1
     return {"status": "logged"}
