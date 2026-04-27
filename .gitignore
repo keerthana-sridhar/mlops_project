@@ -12,6 +12,7 @@ __pycache__/
 
 # Model checkpoint kept in Git for demo serving
 /models
+models/
 !/models/
 models/*
 !models/cnn.pth
