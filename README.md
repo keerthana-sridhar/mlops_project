@@ -16,8 +16,8 @@ End-to-end MLOps pipeline for malaria cell classification with:
 ### 1. Clone the repository
 
 ```bash
-git clone 
-cd 
+git clone https://github.com/keerthana-sridhar/mlops_project.git
+cd mlops_project
 ```
 
 ### 2. Setup environment
@@ -26,24 +26,32 @@ cd
 cp .env.example .env
 ```
 
-Generate Airflow Fernet key:
+(Optional) Generate Airflow Fernet key:
 
 ```bash
 python3 -c "import os,base64; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
 ```
 
-Add it to `.env`:
+Add to `.env`:
 FERNET_KEY=<your-key>
+AIRFLOW_UID=50000
+MLFLOW_TRACKING_URI=http://mlflow:5000
 
-### 3. ⚠️ IMPORTANT — Run the pipeline FIRST
+### 3. Start MLflow (required for training)
 
-This project does **NOT** ship a trained model. Run:
+```bash
+docker compose up mlflow
+```
+
+> 👉 Keep this running in a terminal
+
+### 4. Run the DVC pipeline (new terminal)
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-docker compose up --build
+
 dvc repro
 ```
 
@@ -55,22 +63,22 @@ This will:
 - Evaluate model
 - Save model to `models/`
 
-### 4. Start the full system
+### 5. Start full system
 
 ```bash
-docker restart backend
+docker compose up --build
 ```
 
-### 5. Access the system
+### 6. Access the system
 
-| Service    | URL                          |
-|------------|------------------------------|
-| Frontend   | http://localhost:8501        |
-| Backend API| http://localhost:8000/docs   |
-| MLflow     | http://localhost:5000        |
-| Airflow    | http://localhost:8080        |
-| Prometheus | http://localhost:9090        |
-| Grafana    | http://localhost:3001        |
+| Service     | URL                        |
+|-------------|----------------------------|
+| Frontend    | http://localhost:8501      |
+| Backend API | http://localhost:8000/docs |
+| MLflow      | http://localhost:5000      |
+| Airflow     | http://localhost:8080      |
+| Prometheus  | http://localhost:9090      |
+| Grafana     | http://localhost:3001      |
 
 ---
 
@@ -80,13 +88,10 @@ docker restart backend
 
 At startup, the backend loads the model in this order:
 
-1. MLflow Production model:
-models:/MalariaClassifier/Production
-2. Local trained model:
-models/<model>.pth
+1. MLflow Production model: `models:/MalariaClassifier/Production`
+2. Local trained model: `models/<model>.pth`
 
-Since no model is pre-registered:
-> 👉 `dvc repro` is required before inference
+> 👉 Since no model is pre-registered, `dvc repro` is required before inference
 
 ---
 
@@ -100,6 +105,7 @@ data/raw/raw_zipped.zip
 **Supported formats:**
 Parasitized/
 Uninfected/
+
 or:
 cell_images/
 Parasitized/
@@ -139,12 +145,13 @@ dvc plots show
 2. Upload image
 
 Backend will:
+
 - Load model
 - Predict label
 - Compute confidence + entropy
 - Log metrics
 
-> Low-confidence / OOD samples are stored in feedback queue.
+> 👉 Low-confidence / OOD samples are stored in feedback queue
 
 ---
 
@@ -156,6 +163,7 @@ New labelled data added to:
 data/feedback/labelled/
 
 DAG performs:
+
 - Preprocessing
 - Fine-tuning
 - Evaluation
@@ -187,7 +195,7 @@ docker/             # Docker configs
 monitoring/         # Prometheus/Grafana
 tests/              # unit tests
 data/raw/           # dataset zip
-models/             # trained model (generated)
+models/             # generated after training
 dvc.yaml            # pipeline
 
 ---
@@ -212,15 +220,13 @@ docker compose build --no-cache
 
 ### Model not loading
 
-👉 You likely forgot:
+> 👉 You likely forgot:
 
 ```bash
 dvc repro
 ```
 
 ### MLflow not working
-
-Check:
 
 ```bash
 docker ps
