@@ -1,14 +1,22 @@
-python-multipart
-
-pytest 
-httpx
-prometheus-client
-uvicorn
+dvc
 fastapi
+httpx
+matplotlib
 mlflow
-torch 
-numpy==1.26.4    
-psutil
 numpy<2
-torchvision
+pandas
+pillow
+prometheus-client
+psutil
+pytest
+python-multipart
+pyyaml
+requests
+scikit-learn
 seaborn
+streamlit
+# Local and venv-based pipeline runs need PyTorch directly from pip.
+# The Docker backend installs CPU wheels explicitly in docker/backend.Dockerfile.
+torch
+torchvision
+uvicorn

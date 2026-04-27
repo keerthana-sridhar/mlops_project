@@ -1,10 +1,16 @@
 dvc
 fastapi
+matplotlib
 mlflow
 numpy<2
+pandas
 pillow
 prometheus-client
 psutil
 python-multipart
 pyyaml
+scikit-learn
+seaborn
+# PyTorch is installed separately in docker/backend.Dockerfile
+# from the official CPU wheel index for predictable container builds.
 uvicorn

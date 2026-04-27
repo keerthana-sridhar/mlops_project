@@ -452,7 +452,7 @@ elif page == "Pipeline":
     st.title("⚙️ ML Pipeline")
 
     st.subheader("📌 Pipeline Architecture")
-    st.image("frontend/assets/pipeline.png")
+    st.image("frontend/assets/overall_1.png")
 
     st.caption("Airflow orchestrates feedback retraining, while DVC reports the reproducible CI pipeline state for tracked code, data, and reports.")
 
@@ -593,8 +593,6 @@ elif page == "Experiments":
             st.warning(data["message"])
         else:
             st.metric("Model", data.get("model_name"))
-            st.metric("Accuracy", data.get("accuracy"))
-            st.metric("F1 Score", data.get("f1_score"))
 
             st.write("Run ID:", data.get("run_id"))
             st.write("Run Name:", data.get("run_name"))

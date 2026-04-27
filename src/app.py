@@ -42,7 +42,7 @@ import torch
 import mlflow
 import mlflow.pytorch
 from mlflow.tracking import MlflowClient
-from mlflow_utils import configure_mlflow
+from src.mlflow_utils import configure_mlflow
 
 
 # ---------------- LOGGING ---------------- #
@@ -746,8 +746,7 @@ ENTROPY_THRESHOLD = 0.5
 
 # ---------------- LOAD CLASS NAMES ---------------- #
 
-train_dataset = datasets.ImageFolder(f"{data_dir}/train")
-class_names = train_dataset.classes
+class_names = params["data"].get("classes", ["Parasitized", "Uninfected"])
 
 
 # ---------------- LOAD MODEL FROM MLFLOW ---------------- #
@@ -881,7 +880,7 @@ def refresh_model_if_needed(force=False):
 
         except Exception as exc:
             logger.error(f"Model refresh failed: {exc}")
-            return False
+            return load_local_pipeline_checkpoint(force=force)
 
 
 def get_model_sync_status(force_refresh=False):
