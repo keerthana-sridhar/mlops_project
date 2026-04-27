@@ -19,4 +19,5 @@ streamlit
 # The Docker backend installs CPU wheels explicitly in docker/backend.Dockerfile.
 torch
 torchvision
+seaborn
 uvicorn
