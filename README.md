@@ -11,130 +11,175 @@ End-to-end MLOps pipeline for malaria cell classification with:
 
 ---
 
-# 🚀 Quick Start (Evaluator Guide)
+## 🚀 Quick Start (Evaluator Guide)
 
-## 1. Clone the repository
+### 1. Clone the repository
 
 ```bash
-git clone <repo-url>
-cd <repo>
-2. Setup environment
+git clone 
+cd 
+```
+
+### 2. Setup environment
+
+```bash
 cp .env.example .env
+```
 
 Generate Airflow Fernet key:
 
+```bash
 python3 -c "import os,base64; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
+```
 
-Add it to .env:
-
+Add it to `.env`:
 FERNET_KEY=<your-key>
-3. ⚠️ IMPORTANT — Run the pipeline FIRST
 
-This project does NOT ship a trained model.
+### 3. ⚠️ IMPORTANT — Run the pipeline FIRST
 
-You must run:
+This project does **NOT** ship a trained model. Run:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
 dvc repro
+```
 
-👉 This will:
+This will:
 
-Extract dataset from data/raw/raw_zipped.zip
-Run preprocessing
-Train model
-Evaluate model
-Save model to models/
-4. Start the full system
+- Extract dataset from `data/raw/raw_zipped.zip`
+- Run preprocessing
+- Train model
+- Evaluate model
+- Save model to `models/`
+
+### 4. Start the full system
+
+```bash
 docker compose up --build
-5. Access the system
-Service	URL
-Frontend	http://localhost:8501
+```
 
-Backend API	http://localhost:8000/docs
+### 5. Access the system
 
-MLflow	http://localhost:5000
+| Service    | URL                          |
+|------------|------------------------------|
+| Frontend   | http://localhost:8501        |
+| Backend API| http://localhost:8000/docs   |
+| MLflow     | http://localhost:5000        |
+| Airflow    | http://localhost:8080        |
+| Prometheus | http://localhost:9090        |
+| Grafana    | http://localhost:3001        |
 
-Airflow	http://localhost:8080
+---
 
-Prometheus	http://localhost:9090
+## 🧠 How the System Works
 
-Grafana	http://localhost:3001
-🧠 How the System Works
-Model Serving Logic
+### Model Serving Logic
 
-At startup, the backend loads model in this order:
+At startup, the backend loads the model in this order:
 
-MLflow Production model (if exists)
-
+1. MLflow Production model:
 models:/MalariaClassifier/Production
-
-Local trained model:
-
+2. Local trained model:
 models/<model>.pth
 
-👉 Since no model is pre-registered:
+Since no model is pre-registered:
+> 👉 `dvc repro` is required before inference
 
-dvc repro is REQUIRED before inference
+---
 
-🔁 Reproducibility (DVC Pipeline)
+## 🔁 Reproducibility (DVC Pipeline)
 
-The pipeline is defined in dvc.yaml.
+The pipeline is defined in `dvc.yaml`.
 
-Input dataset
+**Input dataset:**
 data/raw/raw_zipped.zip
 
-Supported formats:
-
+**Supported formats:**
+Parasitized/
+Uninfected/
+or:
+cell_images/
 Parasitized/
 Uninfected/
 
-or:
+### Pipeline Stages
 
-cell_images/
-  Parasitized/
-  Uninfected/
-Pipeline Stages
-prepare_raw_data → unzip dataset
-eda → data analysis
-preprocess → splitting
-resize → image normalization
-train → model training
-evaluate → evaluation + metrics
-Run pipeline
+1. `prepare_raw_data` → unzip dataset
+2. `eda` → data analysis
+3. `preprocess` → splitting
+4. `resize` → image normalization
+5. `train` → model training
+6. `evaluate` → evaluation + metrics
+
+### Run pipeline
+
+```bash
 dvc repro
-Useful commands
+```
+
+### Useful commands
+
+```bash
 dvc dag
 dvc status
 dvc metrics show
 dvc plots show
-🧪 Using the Application
-Inference flow
-Open Streamlit UI
-Upload image
-Backend:
-loads model
-predicts label
-computes confidence + entropy
-logs metrics
-Low-confidence/OOD images → stored in feedback queue
-🔁 Retraining (Airflow)
+```
 
-Airflow handles feedback loop:
+---
+
+## 🧪 Using the Application
+
+### Inference Flow
+
+1. Open Streamlit UI
+2. Upload image
+
+Backend will:
+- Load model
+- Predict label
+- Compute confidence + entropy
+- Log metrics
+
+> Low-confidence / OOD samples are stored in feedback queue.
+
+---
+
+## 🔁 Retraining (Airflow)
+
+Airflow manages the feedback loop.
 
 New labelled data added to:
-
 data/feedback/labelled/
-DAG triggers:
-preprocessing
-fine-tuning
-evaluation
-promotion to MLflow
-📊 Monitoring
-Prometheus → collects metrics
-Grafana → dashboards
-Alertmanager → sends alerts to backend
-🧪 Testing
+
+DAG performs:
+- Preprocessing
+- Fine-tuning
+- Evaluation
+- Promotion to MLflow
+
+---
+
+## 📊 Monitoring
+
+- **Prometheus** → collects metrics
+- **Grafana** → dashboards
+- **Alertmanager** → sends alerts to backend
+
+---
+
+## 🧪 Testing
+
+```bash
 pytest
-📁 Repository Structure
+```
+
+---
+
+## 📁 Repository Structure
 src/                # backend + training code
 frontend/           # Streamlit UI
 airflow/            # DAGs
@@ -144,42 +189,48 @@ tests/              # unit tests
 data/raw/           # dataset zip
 models/             # trained model (generated)
 dvc.yaml            # pipeline
-⚠️ Important Notes
-mlruns/ is NOT tracked → generated at runtime
-data/processed/ is NOT tracked → generated by DVC
-No pre-trained model is provided
-Always run dvc repro before starting app
-🛠️ Troubleshooting
-Docker build error
+
+---
+
+## ⚠️ Important Notes
+
+- `mlruns/` is **NOT** tracked → generated at runtime
+- `data/processed/` is **NOT** tracked → generated by DVC
+- No pre-trained model is provided
+- Always run `dvc repro` before starting the app
+
+---
+
+## 🛠️ Troubleshooting
+
+### Docker build issues
+
+```bash
 docker builder prune -a
 docker compose build --no-cache
-Model not loading
+```
 
-👉 You forgot:
+### Model not loading
 
+👉 You likely forgot:
+
+```bash
 dvc repro
-MLflow not working
+```
+
+### MLflow not working
 
 Check:
 
+```bash
 docker ps
+```
 
-Ensure mlflow container is running
+Ensure the `mlflow` container is running.
 
-Pipeline issues
+### Pipeline issues
+
+```bash
 dvc status
 dvc repro
-🧠 Design Highlights
-Fully reproducible ML pipeline (DVC)
-Experiment tracking + registry (MLflow)
-Human-in-the-loop retraining (Airflow)
-Real-time monitoring (Prometheus + Grafana)
-Modular microservice architecture (Docker)
-📚 Documentation
-
-See:
-
-docs/architecture.md
-docs/high_level_design.md
-docs/low_level_design.md
-docs/user_manual.md
+```
