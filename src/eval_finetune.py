@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from models import get_model
 from mlflow_utils import configure_mlflow, log_reproducibility_tags
 
-
+# Assisted by ChatGPT
 def load_params():
     with open("params.yaml") as f:
         return yaml.safe_load(f)

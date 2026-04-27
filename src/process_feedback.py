@@ -1,7 +1,7 @@
 import os
 import shutil
 from PIL import Image
-
+# Assisted by ChatGPT
 SRC = "data/feedback/labelled"
 DEST = "data/processed/incremental_resized"
 SIZE = (224, 224)

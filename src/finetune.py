@@ -9,7 +9,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from models import get_model
 from mlflow_utils import configure_mlflow, log_reproducibility_tags
-
+# Assisted by ChatGPT
 DEVICE = "cpu"
 PRODUCTION_CHECKPOINT = "finetune/checkpoint.pth"
 CANDIDATE_CHECKPOINT = "finetune/candidate_checkpoint.pth"
