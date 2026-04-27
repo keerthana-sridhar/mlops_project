@@ -1,44 +1,60 @@
 venv/
+.env
 .DS_Store
-*.zip
-/models
-#check once
+
+# Python caches
 __pycache__/
 *.pyc
-mlruns/
-mlflow.db
-data/
-.DS_Store
-# Runtime files
-failure.json
-inference_metrics.json
 
-# Data folders (tracked by DVC instead)
+# Archives
+*.zip
+!data/raw/raw_zipped.zip
+
+# Model checkpoint kept in Git for demo serving
+/models
+!/models/
+models/*
+!models/cnn.pth
+
+# Dataset handling
+data/*
+!data/raw/
+data/raw/*
+!data/raw/.gitignore
+!data/raw/raw_zipped.zip
+
+# Feedback queues and runtime dataset fragments
 data/feedback/unlabeled/
 data/feedback/unlabeled_ood/
 data/feedback/labelled/
-
-# Those random DVC cache folders
 data/01K*/
 data/chunks_head/
 
-# Python
-__pycache__/
-*.pyc
-.env
-airflow/logs
+# Runtime files
+failure.json
+inference_metrics.json
+logs/
+airflow/logs/
 
-# add to .gitignore
-mlflow_docker.db
+# MLflow local state
 mlflow.db
+mlflow_docker.db
 mlruns/
+shared/mlflow/
+
+# Local DVC machine-specific state
+.dvc/config.local
+.dvc/tmp/
+
+# Fine-tuning artifacts
 reports_finetune/
 finetune/run_id.txt
 finetune/production_model.pth
 finetune/checkpoint.pth
 finetune/candidate_checkpoint.pth
 finetune/.gitignore
-src/dvc_snapshot.sh  
+src/dvc_snapshot.sh
 
-logs/
-shared/mlflow/
+# Local monitoring downloads/binaries
+monitoring/*.tar.gz
+monitoring/alertmanager-*.darwin-arm64/

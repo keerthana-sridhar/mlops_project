@@ -1,18 +1,14 @@
 stages:
-
-
-  merge_feedback:
-    cmd: python src/merge_feedback.py
+  prepare_raw_data:
+    cmd: python3 src/unzip.py
     deps:
-      - src/merge_feedback.py
-      - data/feedback/labelled
+      - src/unzip.py
+      - data/raw/raw_zipped.zip
     outs:
-    - data/raw/cell_images:
-        persist: true
-
+      - data/raw/cell_images
 
   eda:
-    cmd: python src/eda.py
+    cmd: python3 src/eda.py
     deps:
       - src/eda.py
       - data/raw/cell_images
@@ -22,7 +18,7 @@ stages:
       - reports/metrics/eda_metrics.json
 
   preprocess:
-    cmd: python src/preprocess.py
+    cmd: python3 src/preprocess.py
     deps:
       - src/preprocess.py
       - data/raw/cell_images
@@ -33,7 +29,7 @@ stages:
       - data/processed/split
 
   resize:
-    cmd: python src/resize.py
+    cmd: python3 src/resize.py
     deps:
       - src/resize.py
       - data/processed/split
@@ -46,7 +42,7 @@ stages:
 
       
   train:
-    cmd: python src/train.py
+    cmd: python3 src/train.py
     deps:
       - src/train.py
       - src/models.py
@@ -59,7 +55,7 @@ stages:
     metrics:
       - reports/metrics/train_metrics.json
   evaluate:
-    cmd: python src/evaluate.py
+    cmd: python3 src/evaluate.py
     deps:
       - src/evaluate.py
       - src/models.py

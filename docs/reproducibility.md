@@ -1,95 +1,92 @@
 # Reproducibility and Portability
 
-## Current state
+## Reproducibility model used in this repo
 
-The codebase is now much closer to portable-by-default:
+This project is set up so that the full DVC pipeline can start from a local dataset archive instead of a DVC remote.
 
-- MLflow runs are stored in a shared tracking database at `shared/mlflow/mlflow.db`
-- artifacts are copied into `shared/mlflow/artifacts`
-- the `mlflow` container serves the UI on port `5000` against that same shared store
+The expected input is:
 
-That means new runs triggered from the backend, Airflow, or the reproducible Docker stack all land in one shared place instead of mixing host-local and container-local paths.
+```text
+data/raw/raw_zipped.zip
+```
 
-Git push alone is still **not enough** to reproduce everything on another laptop, because DVC data and local secrets still need machine-specific setup.
+The first DVC stage, `prepare_raw_data`, unpacks that archive into:
 
-## What to push to Git
+```text
+data/raw/cell_images/
+```
 
-Push the following:
+After that, the rest of the tracked pipeline runs normally:
 
-- source code under `src/`, `frontend/`, `airflow/`, `docker/`, and `monitoring/`
+1. `eda`
+2. `preprocess`
+3. `resize`
+4. `train`
+5. `evaluate`
+
+## What to commit
+
+Commit:
+
+- source code
 - `docker-compose.yaml`
-- `requirements.txt`
-- `params.yaml`
 - `dvc.yaml`
 - `dvc.lock`
-- `.dvc/` metadata, except `.dvc/config.local`, `.dvc/tmp`, and `.dvc/cache`
-- documentation under `docs/`
+- `params.yaml`
+- `.env.example`
+- documentation
+- `models/cnn.pth`
 
-Do **not** push:
+Do not commit:
 
 - `.env`
 - `.dvc/config.local`
-- `mlflow.db`
+- `.dvc/cache/`
 - `mlruns/`
 - `shared/mlflow/`
 - `logs/`
-- generated reports or transient runtime files unless you intentionally want them versioned
+- `airflow/logs/`
+- extracted data under `data/raw/cell_images/`
+- processed data under `data/processed/`
 
-## What is needed on another laptop
+## Important GitHub limitation
 
-1. Clone the Git repository.
+If `data/raw/raw_zipped.zip` is larger than GitHub's regular file limit, it should not be pushed as a normal Git object.
+
+Use one of these instead:
+
+- Git LFS
+- GitHub Release asset
+- external file share, with instructions to place the file at `data/raw/raw_zipped.zip`
+
+## How another machine reproduces the pipeline
+
+1. Clone the repository.
 2. Create `.env` from `.env.example`.
-3. Configure a **shared DVC remote** on both laptops.
-4. Pull DVC-tracked data and artifacts.
-5. Start the stack with Docker Compose.
-6. Open MLflow at `http://localhost:5000` on the same laptop, or replace `localhost` with the host machine IP from another laptop on the same network.
+3. Ensure `data/raw/raw_zipped.zip` is present.
+4. Start the Docker stack with `docker compose up --build`.
+5. Run `docker compose exec backend dvc repro`.
 
-## Recommended DVC setup
-
-Use a shared remote such as:
-
-- S3
-- Google Drive
-- SSH/SFTP
-- an institutional file server
-
-Keep the remote configuration out of Git by storing it in `.dvc/config.local`.
-
-Example pattern:
+For a non-Docker local run, step 5 can be replaced with:
 
 ```bash
-dvc remote add -d storage <shared-remote-url>
-dvc remote modify --local storage <key> <value>
-dvc pull
+dvc repro
 ```
-
-This keeps secrets off the repository while still allowing another laptop to reproduce the tracked pipeline state.
 
 ## MLflow portability
 
-The stack now uses a dedicated MLflow server service for the UI, while Docker services log directly into the shared backend store.
+MLflow runtime data is stored under:
 
-How it works:
-
-- `docker/mlflow-entrypoint.sh` starts the tracking server UI
-- `src/migrate_mlflow_store.py` copies legacy `mlflow.db` and `mlruns/` data into `shared/mlflow/`
-- the script rewrites artifact URIs to `mlflow-artifacts:/...` so the server can serve them cleanly from any laptop that can reach the host
-
-For local terminal runs outside Docker, point your shell to the server first:
-
-```bash
-export MLFLOW_TRACKING_URI=sqlite:////opt/project/shared/mlflow/mlflow.db
+```text
+shared/mlflow/
 ```
 
-Inside Docker Compose, the services already use the shared SQLite tracking URI.
+That directory is intentionally ignored by Git.
+It is not required for the app to boot, because the backend falls back to `models/cnn.pth` when no Production model exists in MLflow.
 
-## Do secrets need to be exposed in the terminal or UI?
+## Secrets
 
-No.
+Keep secrets out of Git:
 
-Use:
-
-- `.env` for container environment variables
-- `.dvc/config.local` for machine-specific DVC credentials
-
-Those files stay local and should not be committed.
+- use `.env` for container environment variables
+- use `.dvc/config.local` only if you ever add a private DVC remote later

@@ -44,7 +44,7 @@ data/feedback/
 
 ## DVC Pipeline Stages
 
-1. `merge_feedback`
+1. `prepare_raw_data`
 2. `eda`
 3. `preprocess`
 4. `resize`

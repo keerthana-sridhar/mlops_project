@@ -95,42 +95,6 @@ stages:
       md5: f72d2333290467125367b7860add1892.dir
       size: 782016011
       nfiles: 27430
-  augment:
-    cmd: python src/augment.py
-    deps:
-    - path: data/processed/resized
-      hash: md5
-      md5: 5991349d147041d3ba88ee931e92e723.dir
-      size: 781616014
-      nfiles: 27420
-    - path: src/augment.py
-      hash: md5
-      md5: 233c4f53bcb17ff480cb431227067e86
-      size: 2779
-    params:
-      params.yaml:
-        augmentation:
-          horizontal_flip: true
-          vertical_flip: true
-          rotation: 15
-          brightness: 0.2
-          contrast: 0.2
-          num_augments: 2
-        data:
-          raw_dir: data/raw/cell_images
-          processed_dir: data/processed
-          split_dir: data/processed/split
-          resized_dir: data/processed/resized
-          classes:
-          - Parasitized
-          - Uninfected
-          augmented_dir: data/processed/augmented
-    outs:
-    - path: data/processed/augmented
-      hash: md5
-      md5: aa5eb570b04d757424e0926779367a7b.dir
-      size: 2112766825
-      nfiles: 66088
   train:
     cmd: python src/train.py
     deps:
@@ -231,21 +195,20 @@ stages:
       hash: md5
       md5: b2241f62ab8690bd1332073929421288
       size: 88
-  merge_feedback:
-    cmd: python src/merge_feedback.py
+  prepare_raw_data:
+    cmd: python3 src/unzip.py
     deps:
-    - path: data/feedback/labelled
+    - path: data/raw/raw_zipped.zip
       hash: md5
-      md5: d751713988987e9331980363e24189ce.dir
-      size: 0
-      nfiles: 0
-    - path: src/merge_feedback.py
+      md5: 2b73e67c529f36f0fd55c591417fa33e
+      size: 708172590
+    - path: src/unzip.py
       hash: md5
-      md5: be96bf730711ecb33520d8cef32c7c18
-      size: 1086
+      md5: 905941ea079b406fc09ce455e56cd2cd
+      size: 1916
     outs:
     - path: data/raw/cell_images
       hash: md5
-      md5: afbbeea7abcb8d817111d18b8ad09035.dir
-      size: 351824551
-      nfiles: 27632
+      md5: 66999315fe099c72be81b64a2099bdf1.dir
+      size: 350952589
+      nfiles: 27560

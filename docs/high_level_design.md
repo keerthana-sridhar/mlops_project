@@ -32,7 +32,7 @@ Build an AI-assisted malaria cell classification system that supports:
 
 ### 4. Reproducible Training Pipeline
 
-- DVC defines the full pipeline: merge feedback, EDA, preprocess, resize, train, evaluate
+- DVC defines the full pipeline: prepare raw data, EDA, preprocess, resize, train, evaluate
 - `dvc repro` is the reproducible path for rerunning the complete tracked workflow
 
 ### 5. Feedback Retraining Pipeline
