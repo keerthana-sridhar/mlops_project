@@ -43,7 +43,7 @@ This project does **NOT** ship a trained model. Run:
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-
+docker compose up --build
 dvc repro
 ```
 
@@ -58,7 +58,7 @@ This will:
 ### 4. Start the full system
 
 ```bash
-docker compose up --build
+docker restart backend
 ```
 
 ### 5. Access the system
