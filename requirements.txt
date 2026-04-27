@@ -6,8 +6,9 @@ prometheus-client
 uvicorn
 fastapi
 mlflow
-#torch 
+torch 
 numpy==1.26.4    
 psutil
 numpy<2
 torchvision
+seaborn
