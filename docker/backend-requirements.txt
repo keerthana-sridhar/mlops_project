@@ -2,7 +2,7 @@ dvc
 fastapi
 matplotlib
 mlflow
-numpy<2
+numpy
 pandas
 pillow
 prometheus-client

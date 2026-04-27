@@ -2,12 +2,12 @@ FROM apache/airflow:3.2.0
 
 USER airflow
 
-# Install normal packages from PyPI
+# Install normal packages from PyPI.
 RUN pip install --no-cache-dir \
     dvc \
     matplotlib \
     mlflow \
-    "numpy<2" \
+    numpy \
     pandas \
     pillow \
     pyyaml \

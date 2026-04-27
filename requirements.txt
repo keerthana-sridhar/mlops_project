@@ -3,7 +3,7 @@ fastapi
 httpx
 matplotlib
 mlflow
-numpy<2
+numpy
 pandas
 pillow
 prometheus-client
