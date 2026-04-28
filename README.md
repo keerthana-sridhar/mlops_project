@@ -5,7 +5,7 @@ https://drive.google.com/file/d/1cy7upjiLnFuWnWAgtLQPOKfrjlymGix-/view?usp=drive
 https://drive.google.com/file/d/1iRkahS-EqUWSt9FV_RXvOTuwzyhiWxlz/view?usp=drive_link
 
 link to report incase git LFS doesnt render:
-https://drive.google.com/file/d/1Fnvfgbz_h0bJD_D4IZlM-nXKxk9vgEJl/view?usp=sharing
+https://drive.google.com/file/d/1WPizrmtY_aYHRP8aGvySKKUuFvbDBcip/view?usp=drive_link
 
 End-to-end MLOps pipeline for malaria cell classification with:
 
