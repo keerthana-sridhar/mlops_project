@@ -3,7 +3,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-
+# Assisted by Claude
 ZIP_PATH = Path("data/raw/raw_zipped.zip")
 DEST = Path("data/raw")
 CELL_IMAGES_DIR = DEST / "cell_images"

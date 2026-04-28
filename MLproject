@@ -1,0 +1,14 @@
+name: malaria-classification
+
+entry_points:
+  eda:
+    command: "python3 src/eda.py"
+
+  train:
+    command: "python3 src/train.py"
+
+  evaluate:
+    command: "python3 src/evaluate.py"
+
+  finetune:
+    command: "python3 src/finetune.py"

@@ -176,7 +176,7 @@ if not os.path.exists(METRICS_FILE):
             "conf_sum": 0.0
         }, f)
 '''
-CONF_THRESHOLD = float(os.environ.get("CONF_THRESHOLD", "0.6"))
+CONF_THRESHOLD = float(os.environ.get("CONF_THRESHOLD", "0.5"))
 DRIFT_THRESHOLD = float(os.environ.get("DRIFT_THRESHOLD", "0.5"))
 OOD_RATE_THRESHOLD = float(os.environ.get("OOD_RATE_THRESHOLD", "0.2"))
 INPUT_MEAN_DRIFT_THRESHOLD = float(os.environ.get("INPUT_MEAN_DRIFT_THRESHOLD", "0.2"))
