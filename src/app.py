@@ -31,7 +31,7 @@ sys.path.append("/opt/project/src")
 sys.path.insert(0, "/opt/project/src")
 
 # 2. Import your module
-import models
+import src.models as models
 
 # 3. Force mapping (THIS is key)
 sys.modules["models"] = models
