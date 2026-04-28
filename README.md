@@ -7,6 +7,7 @@ https://drive.google.com/file/d/1iRkahS-EqUWSt9FV_RXvOTuwzyhiWxlz/view?usp=drive
 link to report incase git LFS doesnt render:
 https://drive.google.com/file/d/1WPizrmtY_aYHRP8aGvySKKUuFvbDBcip/view?usp=drive_link
 
+
 End-to-end MLOps pipeline for malaria cell classification with:
 
 - FastAPI backend (inference + APIs)
@@ -217,7 +218,11 @@ dvc.yaml            # pipeline
 ---
 
 ## 🛠️ Troubleshooting
-
+NOTE: git clone takes time because it also downloads lfs videos, you can skip that by 
+GIT_LFS_SKIP_SMUDGE=1 git clone <repo> test
+cd test
+### But pull dataset zip only
+git lfs pull --include="data/raw/raw_zipped.zip"
 ### Docker build issues
 
 ```bash
