@@ -1,5 +1,12 @@
 # 🦠 Malaria Cell Classification MLOps System
 
+link to videos incase git LFS doesnt render:
+https://drive.google.com/file/d/1cy7upjiLnFuWnWAgtLQPOKfrjlymGix-/view?usp=drive_link
+https://drive.google.com/file/d/1iRkahS-EqUWSt9FV_RXvOTuwzyhiWxlz/view?usp=drive_link
+
+link to report incase git LFS doesnt render:
+https://drive.google.com/file/d/1KIlerdIS7qVGvSQEI1EWRD1U4ZEk96t5/view?usp=drive_link
+
 End-to-end MLOps pipeline for malaria cell classification with:
 
 - FastAPI backend (inference + APIs)
